@@ -211,6 +211,170 @@ static inline VALUE eval_array_r(rapidjson::Value &value) {
 }
 
 
+template <class Writer> static inline void write_str(Writer&, const VALUE);
+template <class Writer> static inline void write_hash(Writer&, const VALUE);
+template <class Writer> static inline void write_array(Writer&, const VALUE);
+template <class Writer> static inline void write_bignum(Writer&, const VALUE);
+template <class Writer> static inline void write_struct(Writer&, const VALUE);
+template <class Writer> static inline void write_usamin(Writer&, const VALUE);
+template <class Writer> static inline void write_to_s(Writer&, const VALUE);
+
+template <class Writer> static void write(Writer &writer, const VALUE value) {
+    if (value == Qnil) {
+        writer.Null();
+    } else if (value == Qfalse) {
+        writer.Bool(false);
+    } else if (value == Qtrue) {
+        writer.Bool(true);
+    } else if (RB_FIXNUM_P(value)) {
+        writer.Int64(FIX2LONG(value));
+    } else if (RB_FLOAT_TYPE_P(value)) {
+        writer.Double(NUM2DBL(value));
+    } else if (RB_STATIC_SYM_P(value)) {
+        write_str(writer, rb_sym_to_s(value));
+    } else {
+        switch (RB_BUILTIN_TYPE(value)) {
+            case T_STRING:
+                write_str(writer, value);
+                break;
+            case T_HASH:
+                write_hash(writer, value);
+                break;
+            case T_ARRAY:
+                write_array(writer, value);
+                break;
+            case T_BIGNUM:
+                write_bignum(writer, value);
+                break;
+            case T_STRUCT:
+                write_struct(writer, value);
+                break;
+            default:
+                if (rb_obj_is_kind_of(value, rb_cUsaminValue))
+                    write_usamin(writer, value);
+                else
+                    write_to_s(writer, value);
+                break;
+        }
+    }
+}
+
+template <class Writer> static inline void write_str(Writer &writer, const VALUE value) {
+    VALUE v = get_utf8_str(value);
+    writer.String(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
+}
+
+template <class Writer> static inline void write_key_str(Writer &writer, const VALUE value) {
+    VALUE v = get_utf8_str(value);
+    writer.Key(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
+}
+
+template <class Writer> static inline void write_key_to_s(Writer &writer, const VALUE value) {
+    write_key_str(writer, rb_funcall(value, id_to_s, 0));
+}
+
+template <class Writer> static inline int write_hash_each(VALUE key, VALUE value, Writer *writer) {
+    if (RB_TYPE_P(key, T_STRING))
+        write_key_str(*writer, key);
+    else if (RB_TYPE_P(key, T_SYMBOL))
+        write_key_str(*writer, rb_sym_to_s(key));
+    else
+        write_key_to_s(*writer, key);
+    write(*writer, value);
+    return ST_CONTINUE;
+}
+
+template <class Writer> static inline void write_hash(Writer &writer, const VALUE hash) {
+    writer.StartObject();
+    rb_hash_foreach(hash, (int (*)(ANYARGS))write_hash_each<Writer>, reinterpret_cast<VALUE>((&writer)));
+    writer.EndObject();
+}
+
+template <class Writer> static inline void write_array(Writer &writer, const VALUE value) {
+    writer.StartArray();
+    const VALUE *ptr = rb_array_const_ptr(value);
+    for (long i = 0; i < rb_array_len(value); i++, ptr++)
+        write(writer, *ptr);
+    writer.EndArray();
+}
+
+template <class Writer> static inline void write_bignum(Writer &writer, const VALUE value) {
+    VALUE v = rb_big2str(value, 10);
+    writer.RawValue(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)), rapidjson::kNumberType);
+}
+
+template <class Writer> static inline void write_struct(Writer &writer, const VALUE value) {
+    writer.StartObject();
+    VALUE members = rb_struct_members(value);
+    const VALUE *ptr = rb_array_const_ptr(members);
+    for (long i = 0; i < rb_array_len(members); i++, ptr++) {
+        if (RB_TYPE_P(*ptr, T_SYMBOL))
+            write_key_str(writer, rb_sym_to_s(*ptr));
+        else if (RB_TYPE_P(*ptr, T_STRING))
+            write_key_str(writer, *ptr);
+        else
+            write_key_to_s(writer, *ptr);
+        write(writer, rb_struct_aref(value, *ptr));
+    }
+    writer.EndObject();
+}
+
+template <class Writer> static void write_value(Writer &writer, rapidjson::Value &value) {
+    switch (value.GetType()) {
+        case rapidjson::kObjectType:
+            writer.StartObject();
+            for (auto &m : value.GetObject()) {
+                writer.Key(m.name.GetString(), m.name.GetStringLength());
+                write_value(writer, m.value);
+            }
+            writer.EndObject();
+            break;
+        case rapidjson::kArrayType:
+            writer.StartArray();
+            for (auto &v : value.GetArray())
+                write_value(writer, v);
+            writer.EndArray();
+            break;
+        case rapidjson::kNullType:
+            writer.Null();
+            break;
+        case rapidjson::kFalseType:
+            writer.Bool(false);
+            break;
+        case rapidjson::kTrueType:
+            writer.Bool(true);
+            break;
+        case rapidjson::kNumberType:
+            if (value.IsInt())
+                writer.Int(value.GetInt());
+            else if (value.IsUint())
+                writer.Uint(value.GetUint());
+            else if (value.IsInt64())
+                writer.Int64(value.GetInt64());
+            else if (value.IsUint64())
+                writer.Uint64(value.GetUint64());
+            else
+                writer.Double(value.GetDouble());
+            break;
+        case rapidjson::kStringType:
+            writer.String(value.GetString(), value.GetStringLength());
+            break;
+        default:
+            rb_raise(rb_eUsaminError, "Unknown Value Type: %d", value.GetType());
+    }
+}
+
+template <class Writer> static inline void write_usamin(Writer &writer, const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_value(value);
+    write_value(writer, *(value->value));
+}
+
+template <class Writer> static inline void write_to_s(Writer &writer, const VALUE value) {
+    write_str(writer, rb_funcall(value, id_to_s, 0));
+}
+
+
 UsaminValue::UsaminValue(rapidjson::Value *value, bool free_flag) {
     this->value = value;
     this->free_flag = free_flag;
@@ -319,7 +483,8 @@ static VALUE w_value_eval(const VALUE self) {
         return eval_object(*(value->value));
     else if (value->value->IsArray())
         return eval_array(*(value->value));
-    return Qnil;
+    else
+        return Qnil;
 }
 
 /*
@@ -340,8 +505,6 @@ static VALUE w_value_isfrozen(const VALUE self) {
     return Qtrue;
 }
 
-template <class Writer> static void write_value(Writer&, rapidjson::Value&);
-
 /*
  * Dumps data in JSON.
  *
@@ -352,7 +515,7 @@ static VALUE w_value_marshal_dump(const VALUE self) {
     check_value(value);
     rapidjson::StringBuffer buf;
     rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
-    write_value(writer, *(value->value));
+    write_value(writer, *value->value);
     return rb_str_new(buf.GetString(), buf.GetSize());
 }
 
@@ -381,8 +544,7 @@ static VALUE w_value_marshal_load(const VALUE self, VALUE source) {
 
 
 /*
- * @overload [](name)
- *   @return [Object | nil]
+ * @return [Object | nil]
  *
  * @note This method has linear time complexity.
  */
@@ -397,14 +559,13 @@ static VALUE w_hash_operator_indexer(const VALUE self, VALUE key) {
 }
 
 static VALUE hash_enum_size(const VALUE self, VALUE args, VALUE eobj) {
-    UsaminValue *value = get_value(self);
-    check_object(value);
-    return UINT2NUM(value->value->MemberCount());
+    return UINT2NUM(get_value(self)->value->MemberCount());
 }
 
 /*
  * @yield [key, value]
  * @yieldparam key [String]
+ * @yieldparam value [Object]
  * @return [Enumerator | self]
  */
 static VALUE w_hash_each(const VALUE self) {
@@ -457,6 +618,28 @@ static VALUE w_hash_isempty(const VALUE self) {
 }
 
 /*
+ * @overload fetch(key, default = nil)
+ *   @param [String] key
+ *   @param [Object] default
+ *   @return [Object]
+ *
+ * @overload fetch(key)
+ *   @param [String] key
+ *   @yield [key]
+ *   @return [Object]
+ */
+static VALUE w_hash_fetch(const int argc, VALUE* argv, const VALUE self) {
+    rb_check_arity(argc, 1, 2);
+    UsaminValue *value = get_value(self);
+    check_object(value);
+    VALUE kvalue = get_utf8_str(argv[0]);
+    for (auto &m : value->value->GetObject())
+        if (str_compare(RSTRING_PTR(kvalue), RSTRING_LEN(kvalue), m.name.GetString(), m.name.GetStringLength()))
+            return eval(m.value);
+    return argc == 2 ? argv[1] : rb_block_given_p() ? rb_yield(argv[0]) : Qnil;
+}
+
+/*
  * @note This method has linear time complexity.
  */
 static VALUE w_hash_haskey(const VALUE self, VALUE name) {
@@ -488,6 +671,34 @@ static VALUE w_hash_length(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_object(value);
     return UINT2NUM(value->value->MemberCount());
+}
+
+/*
+ * @yield [key, value]
+ * @yieldparam key [String]
+ * @yieldparam value [Object]
+ * @return [Enumerator | ::Hash]
+ */
+static VALUE w_hash_select(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_object(value);
+    RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
+    VALUE hash = rb_hash_new();
+    if (rb_proc_arity(rb_block_proc()) > 1) {
+        for (auto &m : value->value->GetObject()) {
+            VALUE args[] = { eval_str(m.name), eval(m.value) };
+            if (RTEST(rb_yield_values2(2, args)))
+                rb_hash_aset(hash, args[0], args[1]);
+        }
+    } else {
+        for (auto &m : value->value->GetObject()) {
+            VALUE key = eval_str(m.name);
+            VALUE val = eval(m.value);
+            if (RTEST(rb_yield(rb_assoc_new(key, val))))
+                rb_hash_aset(hash, key, val);
+        }
+    }
+    return hash;
 }
 
 /*
@@ -532,45 +743,57 @@ static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE s
     rb_check_arity(argc, 1, 2);
     UsaminValue *value = get_value(self);
     check_array(value);
+    rapidjson::SizeType sz = value->value->Size();
     if (argc == 2) {
-        long beg = NUM2LONG(argv[0]);
-        long len = NUM2LONG(argv[1]);
+        long beg = FIX2LONG(argv[0]);
+        long len = FIX2LONG(argv[1]);
         if (beg < 0)
-            beg = beg + value->value->Size();
+            beg += sz;
         if (beg >= 0 && len >= 0) {
-            long end = beg + len;
-            if (end > value->value->Size())
-                end = value->value->Size();
+            rapidjson::SizeType end = static_cast<rapidjson::SizeType>(beg + len);
+            if (end > sz)
+                end = sz;
             VALUE ret = rb_ary_new2(end - beg);
-            for (long i = beg; i < end; i++)
-                rb_ary_push(ret, eval((*(value->value))[static_cast<unsigned int>(i)]));
+            for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
+                rb_ary_push(ret, eval((*value->value)[i]));
             return ret;
         }
     } else if (rb_obj_is_kind_of(argv[0], rb_cRange)) {
         long beg, len;
-        if (rb_range_beg_len(argv[0], &beg, &len, value->value->Size(), 0) == Qtrue) {
+        if (rb_range_beg_len(argv[0], &beg, &len, sz, 0) == Qtrue) {
             VALUE ret = rb_ary_new2(len);
-            for (long i = beg; i < beg + len; i++)
-                rb_ary_push(ret, eval((*(value->value))[static_cast<unsigned int>(i)]));
+            for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < beg + len; i++)
+                rb_ary_push(ret, eval((*value->value)[i]));
             return ret;
         }
     } else {
-        long l = NUM2LONG(argv[0]);
+        long l = FIX2LONG(argv[0]);
         if (l < 0)
-            l = l + value->value->Size();
-        if (l >= 0) {
-            unsigned int i = static_cast<unsigned int>(l);
-            if (i < value->value->Size())
-                return eval((*(value->value))[i]);
-        }
+            l += sz;
+        if (0 <= l && l < sz)
+            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
     }
     return Qnil;
 }
 
-static VALUE array_enum_size(const VALUE self, VALUE args, VALUE eobj) {
+/*
+ * @param [Integer] nth
+ * @return [Object]
+ */
+static VALUE w_array_at(const VALUE self, VALUE nth) {
     UsaminValue *value = get_value(self);
     check_array(value);
-    return UINT2NUM(value->value->Size());
+    long l = FIX2LONG(nth);
+    rapidjson::SizeType sz = value->value->Size();
+    if (l < 0)
+        l += sz;
+    if (0 <= l && l < sz)
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
+    return Qnil;
+}
+
+static VALUE array_enum_size(const VALUE self, VALUE args, VALUE eobj) {
+    return UINT2NUM(get_value(self)->value->Size());
 }
 
 /*
@@ -607,17 +830,60 @@ static VALUE w_array_isempty(const VALUE self) {
 }
 
 /*
- * @yield [value]
- * @return [Integer]
+ * @overload fetch(nth)
+ *   @param [Integer] nth
+ *   @return [Object]
+ *   @raise [IndexError] if nth is out of array bounds
+ *
+ * @overload fetch(nth, ifnone)
+ *   @param [Integer] nth
+ *   @param [Object] ifnone
+ *   @return [Object]
+ *
+ * @overload fetch(nth)
+ *   @param [Integer] nth
+ *   @yield [nth]
+ *   @return [Object]
  */
-static VALUE w_array_index(int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_fetch(const int argc, VALUE* argv, const VALUE self) {
+    rb_check_arity(argc, 1, 2);
+    UsaminValue *value = get_value(self);
+    check_array(value);
+    rapidjson::SizeType sz = value->value->Size();
+
+    long l = FIX2LONG(argv[0]);
+    if (l < 0)
+        l += sz;
+    if (0 <= l && l < sz)
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
+
+    if (argc == 2)
+        return argv[1];
+    else if (rb_block_given_p())
+        return rb_yield(argv[0]);
+    else
+        rb_raise(rb_eIndexError, "index %ld outside of array bounds: %ld...%u", FIX2LONG(argv[0]), -static_cast<long>(sz), sz);
+    return Qnil;
+}
+
+/*
+ * @overload find_index(val)
+ *   @param [Object] val
+ *   @return [Integer | nil]
+ *
+ * @overload find_index
+ *   @yield [item]
+ *   @yieldparam item [Object]
+ *   @return [Integer | nil]
+ */
+static VALUE w_array_find_index(int argc, VALUE* argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
 
     if (argc == 1) {
         for (rapidjson::SizeType i = 0; i < value->value->Size(); i++) {
-            if (rb_equal(argv[0], eval((*(value->value))[i])) == Qtrue)
+            if (rb_equal(argv[0], eval((*value->value)[i])) == Qtrue)
                 return UINT2NUM(i);
         }
         return Qnil;
@@ -625,10 +891,24 @@ static VALUE w_array_index(int argc, VALUE* argv, const VALUE self) {
 
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
     for (rapidjson::SizeType i = 0; i < value->value->Size(); i++) {
-        if (RTEST(rb_yield(eval((*(value->value))[i]))))
+        if (RTEST(rb_yield(eval((*value->value)[i]))))
             return UINT2NUM(i);
     }
     return Qnil;
+}
+
+/*
+ * @overload index(val)
+ *   @param [Object] val
+ *   @return [Integer | nil]
+ *
+ * @overload index
+ *   @yield [item]
+ *   @yieldparam item [Object]
+ *   @return [Integer | nil]
+ */
+static VALUE w_array_index(int argc, VALUE* argv, const VALUE self) {
+    return w_array_find_index(argc, argv, self);
 }
 
 /*
@@ -642,24 +922,47 @@ static VALUE w_array_first(const int argc, VALUE* argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
+    rapidjson::SizeType sz = value->value->Size();
 
     if (argc == 0) {
-        if (value->value->Size() == 0)
+        if (sz == 0)
             return Qnil;
-        return eval((*(value->value))[0]);
+        return eval(*value->value->Begin());
+    } else {
+        long l = FIX2LONG(argv[0]);
+        if (l > sz)
+            l = sz;
+        VALUE ret = rb_ary_new2(l);
+        for (auto v = value->value->Begin(); v < value->value->Begin() + l; v++)
+            rb_ary_push(ret, eval(*v));
+        return ret;
     }
+}
 
-    long l = NUM2LONG(argv[0]);
-    if (l < 0)
-        l = 0;
-    else if (l > value->value->Size())
-        l = value->value->Size();
-    unsigned int li = static_cast<unsigned int>(l);
-    VALUE ret = rb_ary_new2(li);
-    for (unsigned int i = 0; i < li; i++)
-        rb_ary_push(ret, eval((*(value->value))[i]));
+/*
+ * @overload last
+ *   @return [Object | nil]
+ *
+ * @overload last(n)
+ *   @return [::Array<Object>]
+ */
+static VALUE w_array_last(const int argc, VALUE* argv, const VALUE self) {
+    rb_check_arity(argc, 0, 1);
+    UsaminValue *value = get_value(self);
+    check_array(value);
+    rapidjson::SizeType sz = value->value->Size();
 
-    return ret;
+    if (argc == 0) {
+        return sz > 0 ? eval(*(value->value->End() - 1)) : Qnil;
+    } else {
+        long l = FIX2LONG(argv[0]);
+        if (l > sz)
+            l = sz;
+        VALUE ret = rb_ary_new2(l);
+        for (auto v = value->value->End() - l; v < value->value->End(); v++)
+            rb_ary_push(ret, eval(*v));
+        return ret;
+    }
 }
 
 /*
@@ -669,6 +972,24 @@ static VALUE w_array_length(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_array(value);
     return UINT2NUM(value->value->Size());
+}
+
+/*
+ * @overload slice(nth)
+ *   @param [Integer] nth
+ *   @return [Object | nil]
+ *
+ * @overload slice(start, length)
+ *   @param [Integer] start
+ *   @param [Integer] length
+ *   @return [::Array<Object> | nil]
+ *
+ * @overload slice(range)
+ *   @param [Range] range
+ *   @return [::Array<Object> | nil]
+ */
+static VALUE w_array_slice(const int argc, VALUE* argv, const VALUE self) {
+    return w_array_operator_indexer(argc, argv, self);
 }
 
 /*
@@ -682,163 +1003,6 @@ static VALUE w_array_eval(const VALUE self) {
     return eval_array(*(value->value));
 }
 
-
-template <class Writer> static void write(Writer&, const VALUE);
-
-template <class Writer> static inline void write_str(Writer &writer, const VALUE value) {
-    VALUE v = get_utf8_str(value);
-    writer.String(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
-}
-
-template <class Writer> static inline void write_to_s(Writer &writer, const VALUE value) {
-    write_str(writer, rb_funcall(value, id_to_s, 0));
-}
-
-template <class Writer> static inline void write_key_str(Writer &writer, const VALUE value) {
-    VALUE v = get_utf8_str(value);
-    writer.Key(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
-}
-
-template <class Writer> static inline void write_key_to_s(Writer &writer, const VALUE value) {
-    write_key_str(writer, rb_funcall(value, id_to_s, 0));
-}
-
-template <class Writer> static inline void write_bignum(Writer &writer, const VALUE value) {
-    VALUE v = rb_big2str(value, 10);
-    writer.RawValue(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)), rapidjson::kNumberType);
-}
-
-template <class Writer> static inline int write_hash_each(VALUE key, VALUE value, Writer *writer) {
-    if (RB_TYPE_P(key, T_STRING))
-        write_key_str(*writer, key);
-    else if (RB_TYPE_P(key, T_SYMBOL))
-        write_key_str(*writer, rb_sym_to_s(key));
-    else
-        write_key_to_s(*writer, key);
-    write(*writer, value);
-    return ST_CONTINUE;
-}
-
-template <class Writer> static inline void write_hash(Writer &writer, const VALUE hash) {
-    writer.StartObject();
-    rb_hash_foreach(hash, (int (*)(ANYARGS))write_hash_each<Writer>, reinterpret_cast<VALUE>((&writer)));
-    writer.EndObject();
-}
-
-template <class Writer> static inline void write_array(Writer &writer, const VALUE value) {
-    writer.StartArray();
-    const VALUE *ptr = rb_array_const_ptr(value);
-    for (long i = 0; i < rb_array_len(value); i++, ptr++)
-        write(writer, *ptr);
-    writer.EndArray();
-}
-
-template <class Writer> static inline void write_struct(Writer &writer, const VALUE value) {
-    writer.StartObject();
-    VALUE members = rb_struct_members(value);
-    const VALUE *ptr = rb_array_const_ptr(members);
-    for (long i = 0; i < rb_array_len(members); i++, ptr++) {
-        if (RB_TYPE_P(*ptr, T_SYMBOL))
-            write_key_str(writer, rb_sym_to_s(*ptr));
-        else if (RB_TYPE_P(*ptr, T_STRING))
-            write_key_str(writer, *ptr);
-        else
-            write_key_to_s(writer, *ptr);
-        write(writer, rb_struct_aref(value, *ptr));
-    }
-    writer.EndObject();
-}
-
-template <class Writer> static void write_value(Writer &writer, rapidjson::Value &value) {
-    switch (value.GetType()) {
-        case rapidjson::kObjectType:
-            writer.StartObject();
-            for (auto &m : value.GetObject()) {
-                writer.Key(m.name.GetString(), m.name.GetStringLength());
-                write_value(writer, m.value);
-            }
-            writer.EndObject();
-            break;
-        case rapidjson::kArrayType:
-            writer.StartArray();
-            for (auto &v : value.GetArray())
-                write_value(writer, v);
-            writer.EndArray();
-            break;
-        case rapidjson::kNullType:
-            writer.Null();
-            break;
-        case rapidjson::kFalseType:
-            writer.Bool(false);
-            break;
-        case rapidjson::kTrueType:
-            writer.Bool(true);
-            break;
-        case rapidjson::kNumberType:
-            if (value.IsInt())
-                writer.Int(value.GetInt());
-            else if (value.IsUint())
-                writer.Uint(value.GetUint());
-            else if (value.IsInt64())
-                writer.Int64(value.GetInt64());
-            else if (value.IsUint64())
-                writer.Uint64(value.GetUint64());
-            else
-                writer.Double(value.GetDouble());
-            break;
-        case rapidjson::kStringType:
-            writer.String(value.GetString(), value.GetStringLength());
-            break;
-        default:
-            rb_raise(rb_eUsaminError, "Unknown Value Type: %d", value.GetType());
-    }
-}
-
-template <class Writer> static inline void write_usamin(Writer &writer, const VALUE self) {
-    UsaminValue *value = get_value(self);
-    check_value(value);
-    write_value(writer, *(value->value));
-}
-
-template <class Writer> static void write(Writer &writer, const VALUE value) {
-    if (value == Qnil) {
-        writer.Null();
-    } else if (value == Qfalse) {
-        writer.Bool(false);
-    } else if (value == Qtrue) {
-        writer.Bool(true);
-    } else if (RB_FIXNUM_P(value)) {
-        writer.Int64(FIX2LONG(value));
-    } else if (RB_FLOAT_TYPE_P(value)) {
-        writer.Double(NUM2DBL(value));
-    } else if (RB_STATIC_SYM_P(value)) {
-        write_str(writer, rb_sym_to_s(value));
-    } else {
-        switch (RB_BUILTIN_TYPE(value)) {
-            case T_STRING:
-                write_str(writer, value);
-                break;
-            case T_HASH:
-                write_hash(writer, value);
-                break;
-            case T_ARRAY:
-                write_array(writer, value);
-                break;
-            case T_BIGNUM:
-                write_bignum(writer, value);
-                break;
-            case T_STRUCT:
-                write_struct(writer, value);
-                break;
-            default:
-                if (rb_obj_is_kind_of(value, rb_cUsaminValue))
-                    write_usamin(writer, value);
-                else
-                    write_to_s(writer, value);
-                break;
-        }
-    }
-}
 
 /*
  * Generate the JSON string from Ruby data structures.
@@ -857,10 +1021,11 @@ static VALUE w_generate(const VALUE self, VALUE value) {
 /*
  * Generate the prettified JSON string from Ruby data structures.
  *
- * @overload generate(obj, opts = {})
+ * @overload pretty_generate(obj, opts = {})
  *   @param [Object] obj an object to serialize
  *   @param [::Hash] opts options
  *   @option opts [String] :indent ('  ') a string used to indent
+ *   @option opts [Boolean] :single_line_array (false)
  *   @return [String]
  */
 static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
@@ -873,8 +1038,6 @@ static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
     unsigned int indent_count = 2;
     if (argc > 1) {
         VALUE v_indent = rb_hash_lookup(options, sym_indent);
-        VALUE v_single_line_array = rb_hash_lookup(options, sym_single_line_array);
-
         if (RTEST(v_indent)) {
             if (RB_FIXNUM_P(v_indent)) {
                 long l = FIX2LONG(v_indent);
@@ -887,9 +1050,6 @@ static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
                 } else {
                     const char *indent_str = RSTRING_PTR(v);
                     switch (indent_str[0]) {
-                        case '\0':
-                            indent_count = 0;
-                            break;
                         case ' ':
                         case '\t':
                         case '\r':
@@ -899,7 +1059,6 @@ static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
                         default:
                             rb_raise(rb_eUsaminError, ":indent must be a repetation of \" \", \"\\t\", \"\\r\" or \"\\n\".");
                     }
-
                     for (long i = 1; i < vlen; i++)
                         if (indent_str[0] != indent_str[i])
                             rb_raise(rb_eUsaminError, ":indent must be a repetation of \" \", \"\\t\", \"\\r\" or \"\\n\".");
@@ -908,7 +1067,7 @@ static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
             }
         }
 
-        if (RTEST(v_single_line_array))
+        if (RTEST(rb_hash_lookup(options, sym_single_line_array)))
             writer.SetFormatOptions(rapidjson::kFormatSingleLineArray);
     }
     writer.SetIndent(indent_char, indent_count);
@@ -950,11 +1109,13 @@ extern "C" void Init_usamin(void) {
     rb_define_alloc_func(rb_cUsaminHash, usamin_alloc);
     rb_undef_method(rb_cUsaminHash, "initialize");
     rb_define_method(rb_cUsaminHash, "[]", RUBY_METHOD_FUNC(w_hash_operator_indexer), 1);
+    rb_define_method(rb_cUsaminHash, "assoc", RUBY_METHOD_FUNC(w_hash_operator_indexer), 1);
     rb_define_method(rb_cUsaminHash, "each", RUBY_METHOD_FUNC(w_hash_each), 0);
     rb_define_method(rb_cUsaminHash, "each_pair", RUBY_METHOD_FUNC(w_hash_each), 0);
     rb_define_method(rb_cUsaminHash, "each_key", RUBY_METHOD_FUNC(w_hash_each_key), 0);
     rb_define_method(rb_cUsaminHash, "each_value", RUBY_METHOD_FUNC(w_hash_each_value), 0);
     rb_define_method(rb_cUsaminHash, "empty?", RUBY_METHOD_FUNC(w_hash_isempty), 0);
+    rb_define_method(rb_cUsaminHash, "fetch", RUBY_METHOD_FUNC(w_hash_fetch), -1);
     rb_define_method(rb_cUsaminHash, "has_key?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
     rb_define_method(rb_cUsaminHash, "include?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
     rb_define_method(rb_cUsaminHash, "key?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
@@ -962,6 +1123,7 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "keys", RUBY_METHOD_FUNC(w_hash_keys), 0);
     rb_define_method(rb_cUsaminHash, "length", RUBY_METHOD_FUNC(w_hash_length), 0);
     rb_define_method(rb_cUsaminHash, "size", RUBY_METHOD_FUNC(w_hash_length), 0);
+    rb_define_method(rb_cUsaminHash, "select", RUBY_METHOD_FUNC(w_hash_select), 0);
     rb_define_method(rb_cUsaminHash, "to_h", RUBY_METHOD_FUNC(w_hash_eval), 0);
     rb_define_method(rb_cUsaminHash, "to_hash", RUBY_METHOD_FUNC(w_hash_eval), 0);
     rb_define_method(rb_cUsaminHash, "values", RUBY_METHOD_FUNC(w_hash_values), 0);
@@ -971,14 +1133,18 @@ extern "C" void Init_usamin(void) {
     rb_define_alloc_func(rb_cUsaminArray, usamin_alloc);
     rb_undef_method(rb_cUsaminArray, "initialize");
     rb_define_method(rb_cUsaminArray, "[]", RUBY_METHOD_FUNC(w_array_operator_indexer), -1);
+    rb_define_method(rb_cUsaminArray, "at", RUBY_METHOD_FUNC(w_array_at), 1);
     rb_define_method(rb_cUsaminArray, "each", RUBY_METHOD_FUNC(w_array_each), 0);
     rb_define_method(rb_cUsaminArray, "each_index", RUBY_METHOD_FUNC(w_array_each_index), 0);
     rb_define_method(rb_cUsaminArray, "empty?", RUBY_METHOD_FUNC(w_array_isempty), 0);
+    rb_define_method(rb_cUsaminArray, "fetch", RUBY_METHOD_FUNC(w_array_fetch), -1);
+    rb_define_method(rb_cUsaminArray, "find_index", RUBY_METHOD_FUNC(w_array_find_index), -1);
     rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_index), -1);
-    rb_define_method(rb_cUsaminArray, "find_index", RUBY_METHOD_FUNC(w_array_index), -1);
     rb_define_method(rb_cUsaminArray, "first", RUBY_METHOD_FUNC(w_array_first), -1);
+    rb_define_method(rb_cUsaminArray, "last", RUBY_METHOD_FUNC(w_array_last), -1);
     rb_define_method(rb_cUsaminArray, "length", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "size", RUBY_METHOD_FUNC(w_array_length), 0);
+    rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_slice), -1);
     rb_define_method(rb_cUsaminArray, "to_a", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "to_ary", RUBY_METHOD_FUNC(w_array_eval), 0);
 
