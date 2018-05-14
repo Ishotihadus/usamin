@@ -4,6 +4,8 @@ A fast JSON serializer / deserializer for Ruby with [RapidJSON](http://rapidjson
 
 The name of "Usamin" is derived from [Nana Abe](https://www.project-imas.com/wiki/Nana_Abe).
 
+I congratulate her on her election as the [7th Cinderella Girl](https://www.project-imas.com/wiki/THE_iDOLM@STER_Cinderella_Girls_General_Election#7th_Cinderella_Girl_General_Election).
+
 ## Installation
 
 Install RapidJSON beforehand. Only header files are necessary, and no need to build.
