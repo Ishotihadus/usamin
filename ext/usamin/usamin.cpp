@@ -248,6 +248,7 @@ template <class Writer> static void write(Writer &writer, const VALUE value) {
             break;
         case RUBY_T_TRUE:
             writer.Bool(true);
+            break;
         case RUBY_T_FALSE:
             writer.Bool(false);
             break;
