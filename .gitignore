@@ -12,6 +12,7 @@
 *.a
 mkmf.log
 
+Gemfile.lock
 .DS_Store
 /testdata/
 /vendor/
