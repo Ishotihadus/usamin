@@ -35,7 +35,7 @@ static inline VALUE get_utf8_str(VALUE str) {
     Check_Type(str, T_STRING);
     int encoding = rb_enc_get_index(str);
     if (encoding == utf8index || rb_enc_compatible(str, utf8value) == utf8)
-        return rb_str_dup(str);
+        return str;
     else
         return rb_str_conv_enc(str, rb_enc_from_index(encoding), utf8);
 }
@@ -52,18 +52,16 @@ static inline bool str_compare(const char* str1, const long len1, const char* st
     return memcmp(str1, str2, len1) == 0;
 }
 
-static inline bool str_compare_xx(VALUE &str1, const rapidjson::Value &str2) {
+static inline bool str_compare_xx(VALUE str1, const rapidjson::Value &str2) {
     bool free_flag = true;
     if (RB_TYPE_P(str1, T_STRING)) {
-        int encoding = rb_enc_get_index(str1);
-        if (encoding == utf8index || rb_enc_compatible(str1, utf8value) == utf8)
-            free_flag = false;
-        else
-            str1 = rb_str_conv_enc(str1, rb_enc_from_index(encoding), utf8);
+        str1 = get_utf8_str(str1);
+        free_flag = false;
     } else if (SYMBOL_P(str1)) {
-        str1 = rb_sym_to_s(str1);
+        str1 = get_utf8_str(rb_sym_to_s(str1));
     } else {
         StringValue(str1);
+        str1 = get_utf8_str(str1);
     }
     bool ret = str_compare(RSTRING_PTR(str1), RSTRING_LEN(str1), str2.GetString(), str2.GetStringLength());
     if (free_flag)
@@ -129,9 +127,7 @@ static inline VALUE make_array(UsaminValue *value) {
 
 static inline rapidjson::ParseResult parse(rapidjson::Document &doc, const VALUE str, bool fast = false) {
     VALUE v = get_utf8_str(str);
-    rapidjson::ParseResult ret = fast ? doc.Parse<kParseFastFlags>(RSTRING_PTR(v), RSTRING_LEN(v)) : doc.Parse(RSTRING_PTR(v), RSTRING_LEN(v));
-    rb_str_free(v);
-    return ret;
+    return fast ? doc.Parse<kParseFastFlags>(RSTRING_PTR(v), RSTRING_LEN(v)) : doc.Parse(RSTRING_PTR(v), RSTRING_LEN(v));
 }
 
 
@@ -275,7 +271,6 @@ template <class Writer> static void write(Writer &writer, const VALUE value) {
             {
                 VALUE v = rb_big2str(value, 10);
                 writer.RawValue(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)), rapidjson::kNumberType);
-                rb_str_free(v);
             }
             break;
         default:
@@ -290,13 +285,11 @@ template <class Writer> static void write(Writer &writer, const VALUE value) {
 template <class Writer> static inline void write_str(Writer &writer, const VALUE value) {
     VALUE v = get_utf8_str(value);
     writer.String(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
-    rb_str_free(v);
 }
 
 template <class Writer> static inline void write_key_str(Writer &writer, const VALUE value) {
     VALUE v = get_utf8_str(value);
     writer.Key(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
-    rb_str_free(v);
 }
 
 template <class Writer> static inline void write_key_to_s(Writer &writer, const VALUE value) {
