@@ -399,8 +399,9 @@ UsaminValue::UsaminValue(rapidjson::Value *value, bool free_flag) {
 }
 
 UsaminValue::~UsaminValue() {
-    if (value && free_flag)
-        delete value;
+    if (value && free_flag) {
+        delete (rapidjson::Document*)value;
+    }
 }
 
 /*
