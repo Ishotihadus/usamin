@@ -25,9 +25,10 @@ VALUE utf8value, sym_fast, sym_indent, sym_single_line_array;
 class UsaminValue {
 public:
     rapidjson::Value *value;
+    VALUE root_document;
     bool free_flag;
 
-    UsaminValue(rapidjson::Value *value = nullptr, bool free_flag = false);
+    UsaminValue(rapidjson::Value *value = nullptr, const bool free_flag = false, const VALUE root_document = Qnil);
     ~UsaminValue();
 };
 
@@ -35,7 +36,7 @@ static inline VALUE get_utf8_str(VALUE str) {
     Check_Type(str, T_STRING);
     int encoding = rb_enc_get_index(str);
     if (encoding == utf8index || rb_enc_compatible(str, utf8value) == utf8)
-        return str;
+        return rb_str_dup(str);
     else
         return rb_str_conv_enc(str, rb_enc_from_index(encoding), utf8);
 }
@@ -53,20 +54,13 @@ static inline bool str_compare(const char* str1, const long len1, const char* st
 }
 
 static inline bool str_compare_xx(VALUE str1, const rapidjson::Value &str2) {
-    bool free_flag = true;
-    if (RB_TYPE_P(str1, T_STRING)) {
+    if (RB_TYPE_P(str1, T_STRING))
         str1 = get_utf8_str(str1);
-        free_flag = false;
-    } else if (SYMBOL_P(str1)) {
+    else if (SYMBOL_P(str1))
         str1 = get_utf8_str(rb_sym_to_s(str1));
-    } else {
-        StringValue(str1);
-        str1 = get_utf8_str(str1);
-    }
-    bool ret = str_compare(RSTRING_PTR(str1), RSTRING_LEN(str1), str2.GetString(), str2.GetStringLength());
-    if (free_flag)
-        rb_str_free(str1);
-    return ret;
+    else
+        str1 = get_utf8_str(StringValue(str1));
+    return str_compare(RSTRING_PTR(str1), RSTRING_LEN(str1), str2.GetString(), str2.GetStringLength());
 }
 
 static inline void check_value(UsaminValue *ptr) {
@@ -94,10 +88,16 @@ static VALUE usamin_free(UsaminValue **ptr) {
     return Qnil;
 }
 
+static VALUE usamin_mark(UsaminValue **ptr) {
+    if (*ptr && (*ptr)->root_document != Qnil)
+        rb_gc_mark((*ptr)->root_document);
+    return Qnil;
+}
+
 static VALUE usamin_alloc(const VALUE klass) {
     UsaminValue** ptr = (UsaminValue**)ruby_xmalloc(sizeof(UsaminValue*));
     *ptr = nullptr;
-    return Data_Wrap_Struct(klass, NULL, usamin_free, ptr);
+    return Data_Wrap_Struct(klass, usamin_mark, usamin_free, ptr);
 }
 
 
@@ -126,24 +126,22 @@ static inline VALUE make_array(UsaminValue *value) {
 }
 
 static inline rapidjson::ParseResult parse(rapidjson::Document &doc, const VALUE str, bool fast = false) {
-    VALUE v = get_utf8_str(str);
+    volatile VALUE v = get_utf8_str(str);
     return fast ? doc.Parse<kParseFastFlags>(RSTRING_PTR(v), RSTRING_LEN(v)) : doc.Parse(RSTRING_PTR(v), RSTRING_LEN(v));
 }
 
 
-static inline VALUE eval_num(rapidjson::Value &value);
-static inline VALUE eval_str(rapidjson::Value &value);
-static inline VALUE eval_object(rapidjson::Value &value);
-static inline VALUE eval_object_r(rapidjson::Value &value);
-static inline VALUE eval_array(rapidjson::Value &value);
-static inline VALUE eval_array_r(rapidjson::Value &value);
+static inline VALUE eval_num(rapidjson::Value&);
+static inline VALUE eval_str(rapidjson::Value&);
+static inline VALUE eval_object_r(rapidjson::Value&);
+static inline VALUE eval_array_r(rapidjson::Value&);
 
-static VALUE eval(rapidjson::Value &value) {
+static VALUE eval(rapidjson::Value &value, VALUE root_document) {
     switch (value.GetType()) {
         case rapidjson::kObjectType:
-            return make_hash(new UsaminValue(&value, false));
+            return make_hash(new UsaminValue(&value, false, root_document));
         case rapidjson::kArrayType:
-            return make_array(new UsaminValue(&value, false));
+            return make_array(new UsaminValue(&value, false, root_document));
         case rapidjson::kNullType:
             return Qnil;
         case rapidjson::kFalseType:
@@ -199,10 +197,10 @@ static inline VALUE eval_str(rapidjson::Value &value) {
     return new_utf8_str(value.GetString(), value.GetStringLength());
 }
 
-static inline VALUE eval_object(rapidjson::Value &value) {
+static inline VALUE eval_object(rapidjson::Value &value, const VALUE root_document) {
     VALUE ret = rb_hash_new();
     for (auto &m : value.GetObject())
-        rb_hash_aset(ret, eval_str(m.name), eval(m.value));
+        rb_hash_aset(ret, eval_str(m.name), eval(m.value, root_document));
     return ret;
 }
 
@@ -213,10 +211,10 @@ static inline VALUE eval_object_r(rapidjson::Value &value) {
     return ret;
 }
 
-static inline VALUE eval_array(rapidjson::Value &value) {
+static inline VALUE eval_array(rapidjson::Value &value, const VALUE root_document) {
     VALUE ret = rb_ary_new2(value.Size());
     for (auto &v : value.GetArray())
-        rb_ary_push(ret, eval(v));
+        rb_ary_push(ret, eval(v, root_document));
     return ret;
 }
 
@@ -296,7 +294,7 @@ template <class Writer> static inline void write_key_to_s(Writer &writer, const 
     write_key_str(writer, rb_funcall(value, id_to_s, 0));
 }
 
-template <class Writer> static inline int write_hash_each(VALUE key, VALUE value, Writer *writer) {
+template <class Writer> static inline int write_hash_each(const VALUE key, const VALUE value, Writer *writer) {
     if (RB_TYPE_P(key, T_STRING))
         write_key_str(*writer, key);
     else if (RB_TYPE_P(key, T_SYMBOL))
@@ -393,15 +391,15 @@ template <class Writer> static inline void write_to_s(Writer &writer, const VALU
 }
 
 
-UsaminValue::UsaminValue(rapidjson::Value *value, bool free_flag) {
+UsaminValue::UsaminValue(rapidjson::Value *value, const bool free_flag, const VALUE root_document) {
     this->value = value;
     this->free_flag = free_flag;
+    this->root_document = root_document;
 }
 
 UsaminValue::~UsaminValue() {
-    if (value && free_flag) {
+    if (value && free_flag)
         delete (rapidjson::Document*)value;
-    }
 }
 
 /*
@@ -414,7 +412,7 @@ UsaminValue::~UsaminValue() {
  *   @option opts :fast fast mode (but not precise)
  *   @return [Object]
  */
-static VALUE w_load(const int argc, VALUE *argv, const VALUE self) {
+static VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
     rapidjson::Document *doc = new rapidjson::Document;
@@ -462,7 +460,7 @@ static VALUE w_load(const int argc, VALUE *argv, const VALUE self) {
  *   @option opts :fast fast mode (but not precise)
  *   @return [Object]
  */
-static VALUE w_parse(const int argc, VALUE *argv, const VALUE self) {
+static VALUE w_parse(const int argc, const VALUE *argv, const VALUE self) {
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
     rapidjson::Document doc;
@@ -499,9 +497,9 @@ static VALUE w_value_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_value(value);
     if (value->value->IsObject())
-        return eval_object(*(value->value));
+        return eval_object(*(value->value), self);
     else if (value->value->IsArray())
-        return eval_array(*(value->value));
+        return eval_array(*(value->value), self);
     else
         return Qnil;
 }
@@ -543,7 +541,7 @@ static VALUE w_value_marshal_dump(const VALUE self) {
  *
  * @return [self]
  */
-static VALUE w_value_marshal_load(const VALUE self, VALUE source) {
+static VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
     Check_Type(source, T_STRING);
     rapidjson::Document *doc = new rapidjson::Document();
     rapidjson::ParseResult result = doc->Parse<rapidjson::kParseFullPrecisionFlag | rapidjson::kParseNanAndInfFlag>(RSTRING_PTR(source), RSTRING_LEN(source));
@@ -567,12 +565,12 @@ static VALUE w_value_marshal_load(const VALUE self, VALUE source) {
  *
  * @note This method has linear time complexity.
  */
-static VALUE w_hash_operator_indexer(const VALUE self, VALUE key) {
+static VALUE w_hash_operator_indexer(const VALUE self, const VALUE key) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(key, m.name))
-            return eval(m.value);
+            return eval(m.value, self);
     return Qnil;
 }
 
@@ -581,12 +579,12 @@ static VALUE w_hash_operator_indexer(const VALUE self, VALUE key) {
  *
  * @note This method has linear time complexity.
  */
-static VALUE w_hash_assoc(const VALUE self, VALUE key) {
+static VALUE w_hash_assoc(const VALUE self, const VALUE key) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(key, m.name))
-            return rb_assoc_new(eval_str(m.name), eval(m.value));
+            return rb_assoc_new(eval_str(m.name), eval(m.value, self));
     return Qnil;
 }
 
@@ -599,11 +597,11 @@ static VALUE w_hash_compact(const VALUE self) {
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
         if (!m.value.IsNull())
-            rb_hash_aset(hash, eval(m.name), eval(m.value));
+            rb_hash_aset(hash, eval(m.name, self), eval(m.value, self));
     return hash;
 }
 
-static VALUE hash_enum_size(const VALUE self, VALUE args, VALUE eobj) {
+static VALUE hash_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
     return UINT2NUM(get_value(self)->value->MemberCount());
 }
 
@@ -619,12 +617,12 @@ static VALUE w_hash_each(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
             rb_yield_values2(2, args);
         }
     } else {
         for (auto &m : value->value->GetObject())
-            rb_yield(rb_assoc_new(eval_str(m.name), eval(m.value)));
+            rb_yield(rb_assoc_new(eval_str(m.name), eval(m.value, self)));
     }
     return self;
 }
@@ -652,7 +650,7 @@ static VALUE w_hash_each_value(const VALUE self) {
     check_object(value);
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     for (auto &m : value->value->GetObject())
-        rb_yield(eval(m.value));
+        rb_yield(eval(m.value, self));
     return self;
 }
 
@@ -673,13 +671,13 @@ static VALUE w_hash_isempty(const VALUE self) {
  *   @yield [key]
  *   @return [Object]
  */
-static VALUE w_hash_fetch(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_hash_fetch(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 1, 2);
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(argv[0], m.name))
-            return eval(m.value);
+            return eval(m.value, self);
     return argc == 2 ? argv[1] : rb_block_given_p() ? rb_yield(argv[0]) : Qnil;
 }
 
@@ -695,7 +693,7 @@ static VALUE w_hash_fetch_values(const int argc, VALUE *argv, const VALUE self) 
         bool found = false;
         for (auto &m : value->value->GetObject()) {
             if (str_compare_xx(argv[i], m.name)) {
-                rb_ary_push(ret, eval(m.value));
+                rb_ary_push(ret, eval(m.value, self));
                 found = true;
                 break;
             }
@@ -716,7 +714,7 @@ static VALUE w_hash_fetch_values(const int argc, VALUE *argv, const VALUE self) 
 /*
  * @note This method has linear time complexity.
  */
-static VALUE w_hash_haskey(const VALUE self, VALUE key) {
+static VALUE w_hash_haskey(const VALUE self, const VALUE key) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
@@ -725,7 +723,7 @@ static VALUE w_hash_haskey(const VALUE self, VALUE key) {
     return Qfalse;
 }
 
-static VALUE w_hash_hasvalue(const VALUE self, VALUE val) {
+static VALUE w_hash_hasvalue(const VALUE self, const VALUE val) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
@@ -737,7 +735,7 @@ static VALUE w_hash_hasvalue(const VALUE self, VALUE val) {
 /*
  * @return [String | nil]
  */
-static VALUE w_hash_key(const VALUE self, VALUE val) {
+static VALUE w_hash_key(const VALUE self, const VALUE val) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
@@ -770,12 +768,12 @@ static VALUE w_hash_length(const VALUE self) {
 /*
  * @return [::Array | nil]
  */
-static VALUE w_hash_rassoc(const VALUE self, VALUE val) {
+static VALUE w_hash_rassoc(const VALUE self, const VALUE val) {
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (rb_funcall(val, rb_intern("=="), 1, eval_r(m.value)))
-            return rb_assoc_new(eval(m.name), eval(m.value));
+            return rb_assoc_new(eval_str(m.name), eval(m.value, self));
     return Qnil;
 }
 
@@ -792,14 +790,14 @@ static VALUE w_hash_select(const VALUE self) {
     VALUE hash = rb_hash_new();
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
             if (RTEST(rb_yield_values2(2, args)))
                 rb_hash_aset(hash, args[0], args[1]);
         }
     } else {
         for (auto &m : value->value->GetObject()) {
             VALUE key = eval_str(m.name);
-            VALUE val = eval(m.value);
+            VALUE val = eval(m.value, self);
             if (RTEST(rb_yield(rb_assoc_new(key, val))))
                 rb_hash_aset(hash, key, val);
         }
@@ -820,14 +818,14 @@ static VALUE w_hash_reject(const VALUE self) {
     VALUE hash = rb_hash_new();
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
             if (!RTEST(rb_yield_values2(2, args)))
                 rb_hash_aset(hash, args[0], args[1]);
         }
     } else {
         for (auto &m : value->value->GetObject()) {
             VALUE key = eval_str(m.name);
-            VALUE val = eval(m.value);
+            VALUE val = eval(m.value, self);
             if (!RTEST(rb_yield(rb_assoc_new(key, val))))
                 rb_hash_aset(hash, key, val);
         }
@@ -841,14 +839,14 @@ static VALUE w_hash_reject(const VALUE self) {
  * @yieldparam value [Object]
  * @return [Enumerator | ::Hash]
  */
-static VALUE w_hash_slice(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_hash_slice(const int argc, const VALUE *argv, const VALUE self) {
     UsaminValue *value = get_value(self);
     check_object(value);
     VALUE hash = rb_hash_new();
     for (int i = 0; i < argc; i++)
         for (auto &m : value->value->GetObject())
             if (str_compare_xx(argv[i], m.name))
-                rb_hash_aset(hash, eval_str(m.name), eval(m.value));
+                rb_hash_aset(hash, eval_str(m.name), eval(m.value, self));
     return hash;
 }
 
@@ -860,7 +858,7 @@ static VALUE w_hash_slice(const int argc, VALUE* argv, const VALUE self) {
 static VALUE w_hash_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_object(value);
-    return eval_object(*(value->value));
+    return eval_object(*(value->value), self);
 }
 
 /*
@@ -871,7 +869,7 @@ static VALUE w_hash_to_a(const VALUE self) {
     check_object(value);
     VALUE ret = rb_ary_new2(value->value->MemberCount());
     for (auto &m : value->value->GetObject())
-        rb_ary_push(ret, rb_assoc_new(eval_str(m.name), eval(m.value)));
+        rb_ary_push(ret, rb_assoc_new(eval_str(m.name), eval(m.value, self)));
     return ret;
 }
 
@@ -883,7 +881,7 @@ static VALUE w_hash_values(const VALUE self) {
     check_object(value);
     VALUE ret = rb_ary_new2(value->value->MemberCount());
     for (auto &m : value->value->GetObject())
-        rb_ary_push(ret, eval(m.value));
+        rb_ary_push(ret, eval(m.value, self));
     return ret;
 }
 
@@ -898,7 +896,7 @@ static VALUE w_hash_transform_keys(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
-        rb_hash_aset(hash, rb_yield(eval_str(m.name)), eval(m.value));
+        rb_hash_aset(hash, rb_yield(eval_str(m.name)), eval(m.value, self));
     return hash;
 }
 
@@ -913,7 +911,7 @@ static VALUE w_hash_transform_values(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
-        rb_hash_aset(hash, eval_str(m.name), rb_yield(eval(m.value)));
+        rb_hash_aset(hash, eval_str(m.name), rb_yield(eval(m.value, self)));
     return hash;
 }
 
@@ -921,7 +919,7 @@ static VALUE w_hash_transform_values(const VALUE self) {
  * @param [String] keys
  * @return [::Array<Object>]
  */
-static VALUE w_hash_values_at(const int argc, VALUE *argv, const VALUE self) {
+static VALUE w_hash_values_at(const int argc, const VALUE *argv, const VALUE self) {
     UsaminValue *value = get_value(self);
     check_object(value);
     VALUE ret = rb_ary_new2(argc);
@@ -929,7 +927,7 @@ static VALUE w_hash_values_at(const int argc, VALUE *argv, const VALUE self) {
         VALUE data = Qnil;
         for (auto &m : value->value->GetObject()) {
             if (str_compare_xx(argv[i], m.name)) {
-                data = eval(m.value);
+                data = eval(m.value, self);
                 break;
             }
         }
@@ -952,7 +950,7 @@ static VALUE w_hash_values_at(const int argc, VALUE *argv, const VALUE self) {
  *   @param [Range] range
  *   @return [::Array<Object> | nil]
  */
-static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 1, 2);
     UsaminValue *value = get_value(self);
     check_array(value);
@@ -968,7 +966,7 @@ static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE s
                 end = sz;
             VALUE ret = rb_ary_new2(end - beg);
             for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
-                rb_ary_push(ret, eval((*value->value)[i]));
+                rb_ary_push(ret, eval((*value->value)[i], self));
             return ret;
         }
     } else if (rb_obj_is_kind_of(argv[0], rb_cRange)) {
@@ -976,7 +974,7 @@ static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE s
         if (rb_range_beg_len(argv[0], &beg, &len, sz, 0) == Qtrue) {
             VALUE ret = rb_ary_new2(len);
             for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < beg + len; i++)
-                rb_ary_push(ret, eval((*value->value)[i]));
+                rb_ary_push(ret, eval((*value->value)[i], self));
             return ret;
         }
     } else {
@@ -984,7 +982,7 @@ static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE s
         if (l < 0)
             l += sz;
         if (0 <= l && l < sz)
-            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
+            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
     }
     return Qnil;
 }
@@ -993,7 +991,7 @@ static VALUE w_array_operator_indexer(const int argc, VALUE* argv, const VALUE s
  * @param [Integer] nth
  * @return [Object]
  */
-static VALUE w_array_at(const VALUE self, VALUE nth) {
+static VALUE w_array_at(const VALUE self, const VALUE nth) {
     UsaminValue *value = get_value(self);
     check_array(value);
     long l = FIX2LONG(nth);
@@ -1001,24 +999,24 @@ static VALUE w_array_at(const VALUE self, VALUE nth) {
     if (l < 0)
         l += sz;
     if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
     return Qnil;
 }
 
 /*
  * @return [::Array]
  */
-static VALUE w_array_compact(const VALUE self, VALUE nth) {
+static VALUE w_array_compact(const VALUE self, const VALUE nth) {
     UsaminValue *value = get_value(self);
     check_array(value);
     VALUE ret = rb_ary_new2(value->value->Size());
     for (auto &v : value->value->GetArray())
         if (!v.IsNull())
-            rb_ary_push(ret, eval(v));
+            rb_ary_push(ret, eval(v, self));
     return ret;
 }
 
-static VALUE array_enum_size(const VALUE self, VALUE args, VALUE eobj) {
+static VALUE array_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
     return UINT2NUM(get_value(self)->value->Size());
 }
 
@@ -1031,7 +1029,7 @@ static VALUE w_array_each(const VALUE self) {
     check_array(value);
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
     for (auto &v : value->value->GetArray())
-        rb_yield(eval(v));
+        rb_yield(eval(v, self));
     return self;
 }
 
@@ -1071,7 +1069,7 @@ static VALUE w_array_isempty(const VALUE self) {
  *   @yield [nth]
  *   @return [Object]
  */
-static VALUE w_array_fetch(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_fetch(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 1, 2);
     UsaminValue *value = get_value(self);
     check_array(value);
@@ -1081,7 +1079,7 @@ static VALUE w_array_fetch(const int argc, VALUE* argv, const VALUE self) {
     if (l < 0)
         l += sz;
     if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)]);
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
 
     if (argc == 2)
         return argv[1];
@@ -1102,7 +1100,7 @@ static VALUE w_array_fetch(const int argc, VALUE* argv, const VALUE self) {
  *   @yieldparam item [Object]
  *   @return [Integer | nil]
  */
-static VALUE w_array_find_index(int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_find_index(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
@@ -1117,7 +1115,7 @@ static VALUE w_array_find_index(int argc, VALUE* argv, const VALUE self) {
 
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
     for (rapidjson::SizeType i = 0; i < value->value->Size(); i++) {
-        if (RTEST(rb_yield(eval((*value->value)[i]))))
+        if (RTEST(rb_yield(eval((*value->value)[i], self))))
             return UINT2NUM(i);
     }
     return Qnil;
@@ -1133,7 +1131,7 @@ static VALUE w_array_find_index(int argc, VALUE* argv, const VALUE self) {
  *   @yieldparam item [Object]
  *   @return [Integer | nil]
  */
-static VALUE w_array_index(int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_index(const int argc, const VALUE *argv, const VALUE self) {
     return w_array_find_index(argc, argv, self);
 }
 
@@ -1144,7 +1142,7 @@ static VALUE w_array_index(int argc, VALUE* argv, const VALUE self) {
  * @overload first(n)
  *   @return [::Array<Object>]
  */
-static VALUE w_array_first(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_first(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
@@ -1153,14 +1151,14 @@ static VALUE w_array_first(const int argc, VALUE* argv, const VALUE self) {
     if (argc == 0) {
         if (sz == 0)
             return Qnil;
-        return eval(*value->value->Begin());
+        return eval(*value->value->Begin(), self);
     } else {
         long l = FIX2LONG(argv[0]);
         if (l > sz)
             l = sz;
         VALUE ret = rb_ary_new2(l);
         for (auto v = value->value->Begin(); v < value->value->Begin() + l; v++)
-            rb_ary_push(ret, eval(*v));
+            rb_ary_push(ret, eval(*v, self));
         return ret;
     }
 }
@@ -1168,7 +1166,7 @@ static VALUE w_array_first(const int argc, VALUE* argv, const VALUE self) {
 /*
  * @return [Boolean]
  */
-static VALUE w_array_include(const VALUE self, VALUE val) {
+static VALUE w_array_include(const VALUE self, const VALUE val) {
     UsaminValue *value = get_value(self);
     check_array(value);
     for (auto &v : value->value->GetArray())
@@ -1184,21 +1182,21 @@ static VALUE w_array_include(const VALUE self, VALUE val) {
  * @overload last(n)
  *   @return [::Array<Object>]
  */
-static VALUE w_array_last(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_last(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
     rapidjson::SizeType sz = value->value->Size();
 
     if (argc == 0) {
-        return sz > 0 ? eval(*(value->value->End() - 1)) : Qnil;
+        return sz > 0 ? eval(*(value->value->End() - 1), self) : Qnil;
     } else {
         long l = FIX2LONG(argv[0]);
         if (l > sz)
             l = sz;
         VALUE ret = rb_ary_new2(l);
         for (auto v = value->value->End() - l; v < value->value->End(); v++)
-            rb_ary_push(ret, eval(*v));
+            rb_ary_push(ret, eval(*v, self));
         return ret;
     }
 }
@@ -1226,7 +1224,7 @@ static VALUE w_array_length(const VALUE self) {
  *   @param [Range] range
  *   @return [::Array<Object> | nil]
  */
-static VALUE w_array_slice(const int argc, VALUE* argv, const VALUE self) {
+static VALUE w_array_slice(const int argc, const VALUE *argv, const VALUE self) {
     return w_array_operator_indexer(argc, argv, self);
 }
 
@@ -1238,7 +1236,7 @@ static VALUE w_array_slice(const int argc, VALUE* argv, const VALUE self) {
 static VALUE w_array_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_array(value);
-    return eval_array(*(value->value));
+    return eval_array(*(value->value), self);
 }
 
 
@@ -1249,7 +1247,7 @@ static VALUE w_array_eval(const VALUE self) {
  *   @param [Object] obj an object to serialize
  *   @return [String]
  */
-static VALUE w_generate(const VALUE self, VALUE value) {
+static VALUE w_generate(const VALUE self, const VALUE value) {
     rapidjson::StringBuffer buf;
     rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
     write(writer, value);
@@ -1266,7 +1264,7 @@ static VALUE w_generate(const VALUE self, VALUE value) {
  *   @option opts [Boolean] :single_line_array (false)
  *   @return [String]
  */
-static VALUE w_pretty_generate(const int argc, VALUE *argv, const VALUE self) {
+static VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE self) {
     VALUE value, options;
     rb_scan_args(argc, argv, "1:", &value, &options);
     rapidjson::StringBuffer buf;
