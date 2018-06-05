@@ -36,7 +36,7 @@ static inline VALUE get_utf8_str(VALUE str) {
     Check_Type(str, T_STRING);
     int encoding = rb_enc_get_index(str);
     if (encoding == utf8index || rb_enc_compatible(str, utf8value) == utf8)
-        return rb_str_dup(str);
+        return str;
     else
         return rb_str_conv_enc(str, rb_enc_from_index(encoding), utf8);
 }
