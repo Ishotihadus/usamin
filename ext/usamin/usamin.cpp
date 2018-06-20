@@ -16,6 +16,27 @@
 #error SIZEOF_VOIDP must not be greater than SIZEOF_VALUE.
 #endif
 
+class RubyCrtAllocator {
+public:
+    static const bool kNeedFree = true;
+    void* Malloc(size_t size) {
+        if (size)
+            return ruby_xmalloc(size);
+        else
+            return nullptr;
+    }
+    void* Realloc(void* originalPtr, size_t, size_t newSize) {
+        if (newSize == 0) {
+            ruby_xfree(originalPtr);
+            return nullptr;
+        }
+        return ruby_xrealloc(originalPtr, newSize);
+    }
+    static void Free(void *ptr) { ruby_xfree(ptr); }
+};
+
+typedef rapidjson::GenericValue<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<RubyCrtAllocator>> RubynizedValue;
+typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<RubyCrtAllocator>> RubynizedDocument;
 
 rb_encoding *utf8;
 int utf8index;
@@ -25,11 +46,11 @@ VALUE utf8value, sym_fast, sym_indent, sym_single_line_array;
 
 class UsaminValue {
 public:
-    rapidjson::Value *value;
+    RubynizedValue *value;
     VALUE root_document;
     bool free_flag;
 
-    UsaminValue(rapidjson::Value *value = nullptr, const bool free_flag = false, const VALUE root_document = Qnil);
+    UsaminValue(RubynizedValue *value = nullptr, const bool free_flag = false, const VALUE root_document = Qnil);
     ~UsaminValue();
 };
 
@@ -54,7 +75,7 @@ static inline bool str_compare(const char* str1, const long len1, const char* st
     return memcmp(str1, str2, len1) == 0;
 }
 
-static inline bool str_compare_xx(VALUE str1, const rapidjson::Value &str2) {
+static inline bool str_compare_xx(VALUE str1, const RubynizedValue &str2) {
     if (RB_TYPE_P(str1, T_STRING))
         str1 = get_utf8_str(str1);
     else if (SYMBOL_P(str1))
@@ -107,7 +128,7 @@ static size_t usamin_size(const void *p) {
     if (*ptr) {
         s += sizeof(UsaminValue);
         if ((*ptr)->free_flag)
-            s += ((rapidjson::Document*)(*ptr)->value)->GetAllocator().Capacity();
+            s += ((RubynizedDocument*)(*ptr)->value)->GetAllocator().Capacity();
     }
     return s;
 }
@@ -146,18 +167,18 @@ static inline VALUE make_array(UsaminValue *value) {
     return ret;
 }
 
-static inline rapidjson::ParseResult parse(rapidjson::Document &doc, const VALUE str, bool fast = false) {
+static inline rapidjson::ParseResult parse(RubynizedDocument &doc, const VALUE str, bool fast = false) {
     volatile VALUE v = get_utf8_str(str);
     return fast ? doc.Parse<kParseFastFlags>(RSTRING_PTR(v), RSTRING_LEN(v)) : doc.Parse(RSTRING_PTR(v), RSTRING_LEN(v));
 }
 
 
-static inline VALUE eval_num(rapidjson::Value&);
-static inline VALUE eval_str(rapidjson::Value&);
-static inline VALUE eval_object_r(rapidjson::Value&);
-static inline VALUE eval_array_r(rapidjson::Value&);
+static inline VALUE eval_num(RubynizedValue&);
+static inline VALUE eval_str(RubynizedValue&);
+static inline VALUE eval_object_r(RubynizedValue&);
+static inline VALUE eval_array_r(RubynizedValue&);
 
-static VALUE eval(rapidjson::Value &value, VALUE root_document) {
+static VALUE eval(RubynizedValue &value, VALUE root_document) {
     switch (value.GetType()) {
         case rapidjson::kObjectType:
             return make_hash(new UsaminValue(&value, false, root_document));
@@ -179,7 +200,7 @@ static VALUE eval(rapidjson::Value &value, VALUE root_document) {
     }
 }
 
-static VALUE eval_r(rapidjson::Value &value) {
+static VALUE eval_r(RubynizedValue &value) {
     switch (value.GetType()) {
         case rapidjson::kObjectType:
             return eval_object_r(value);
@@ -201,7 +222,7 @@ static VALUE eval_r(rapidjson::Value &value) {
     }
 }
 
-static inline VALUE eval_num(rapidjson::Value &value) {
+static inline VALUE eval_num(RubynizedValue &value) {
     if (value.IsInt())
         return INT2FIX(value.GetInt());
     else if (value.IsUint())
@@ -214,32 +235,32 @@ static inline VALUE eval_num(rapidjson::Value &value) {
         return DBL2NUM(value.GetDouble());
 }
 
-static inline VALUE eval_str(rapidjson::Value &value) {
+static inline VALUE eval_str(RubynizedValue &value) {
     return new_utf8_str(value.GetString(), value.GetStringLength());
 }
 
-static inline VALUE eval_object(rapidjson::Value &value, const VALUE root_document) {
+static inline VALUE eval_object(RubynizedValue &value, const VALUE root_document) {
     VALUE ret = rb_hash_new();
     for (auto &m : value.GetObject())
         rb_hash_aset(ret, eval_str(m.name), eval(m.value, root_document));
     return ret;
 }
 
-static inline VALUE eval_object_r(rapidjson::Value &value) {
+static inline VALUE eval_object_r(RubynizedValue &value) {
     VALUE ret = rb_hash_new();
     for (auto &m : value.GetObject())
         rb_hash_aset(ret, eval_str(m.name), eval_r(m.value));
     return ret;
 }
 
-static inline VALUE eval_array(rapidjson::Value &value, const VALUE root_document) {
+static inline VALUE eval_array(RubynizedValue &value, const VALUE root_document) {
     VALUE ret = rb_ary_new2(value.Size());
     for (auto &v : value.GetArray())
         rb_ary_push(ret, eval(v, root_document));
     return ret;
 }
 
-static inline VALUE eval_array_r(rapidjson::Value &value) {
+static inline VALUE eval_array_r(RubynizedValue &value) {
     VALUE ret = rb_ary_new2(value.Size());
     for (auto &v : value.GetArray())
         rb_ary_push(ret, eval_r(v));
@@ -356,7 +377,7 @@ template <class Writer> static inline void write_struct(Writer &writer, const VA
     writer.EndObject();
 }
 
-template <class Writer> static void write_value(Writer &writer, rapidjson::Value &value) {
+template <class Writer> static void write_value(Writer &writer, RubynizedValue &value) {
     switch (value.GetType()) {
         case rapidjson::kObjectType:
             writer.StartObject();
@@ -412,7 +433,7 @@ template <class Writer> static inline void write_to_s(Writer &writer, const VALU
 }
 
 
-UsaminValue::UsaminValue(rapidjson::Value *value, const bool free_flag, const VALUE root_document) {
+UsaminValue::UsaminValue(RubynizedValue *value, const bool free_flag, const VALUE root_document) {
     this->value = value;
     this->free_flag = free_flag;
     this->root_document = root_document;
@@ -420,7 +441,7 @@ UsaminValue::UsaminValue(rapidjson::Value *value, const bool free_flag, const VA
 
 UsaminValue::~UsaminValue() {
     if (value && free_flag)
-        delete (rapidjson::Document*)value;
+        delete (RubynizedDocument*)value;
 }
 
 /*
@@ -436,7 +457,7 @@ UsaminValue::~UsaminValue() {
 static VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
-    rapidjson::Document *doc = new rapidjson::Document;
+    RubynizedDocument *doc = new RubynizedDocument;
     auto result = parse(*doc, source, argc > 1 && RTEST(rb_hash_lookup(options, sym_fast)));
     if (!result) {
         delete doc;
@@ -484,7 +505,7 @@ static VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
 static VALUE w_parse(const int argc, const VALUE *argv, const VALUE self) {
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
-    rapidjson::Document doc;
+    RubynizedDocument doc;
     auto result = parse(doc, source, argc > 1 && RTEST(rb_hash_lookup(options, sym_fast)));
     if (!result)
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());
@@ -564,7 +585,7 @@ static VALUE w_value_marshal_dump(const VALUE self) {
  */
 static VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
     Check_Type(source, T_STRING);
-    rapidjson::Document *doc = new rapidjson::Document();
+    RubynizedDocument *doc = new RubynizedDocument();
     rapidjson::ParseResult result = doc->Parse<rapidjson::kParseFullPrecisionFlag | rapidjson::kParseNanAndInfFlag>(RSTRING_PTR(source), RSTRING_LEN(source));
     if (!result) {
         delete doc;
