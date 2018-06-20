@@ -10,6 +10,7 @@
 #include <rapidjson/writer.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/error/en.h>
+#include <iostream>
 
 #if SIZEOF_VALUE < SIZEOF_VOIDP
 #error SIZEOF_VOIDP must not be greater than SIZEOF_VALUE.
@@ -81,35 +82,55 @@ static inline void check_array(UsaminValue *ptr) {
 }
 
 
-static VALUE usamin_free(UsaminValue **ptr) {
+static void usamin_free(void *p) {
+    if (!p)
+        return;
+    UsaminValue **ptr = (UsaminValue**)p;
     if (*ptr)
         delete *ptr;
-    ruby_xfree(ptr);
-    return Qnil;
+    ruby_xfree(p);
 }
 
-static VALUE usamin_mark(UsaminValue **ptr) {
+static void usamin_mark(void *p) {
+    if (!p)
+        return;
+    UsaminValue **ptr = (UsaminValue**)p;
     if (*ptr && (*ptr)->root_document != Qnil)
         rb_gc_mark((*ptr)->root_document);
-    return Qnil;
 }
 
+static size_t usamin_size(const void *p) {
+    if (!p)
+        return 0;
+    UsaminValue **ptr = (UsaminValue**)p;
+    size_t s = 0;
+    if (*ptr) {
+        s += sizeof(UsaminValue);
+        if ((*ptr)->free_flag)
+            s += ((rapidjson::Document*)(*ptr)->value)->GetAllocator().Capacity();
+    }
+    return s;
+}
+
+static const rb_data_type_t rb_usamin_value_type = { "UsaminValue", { usamin_mark, usamin_free, usamin_size }, nullptr, nullptr, RUBY_TYPED_FREE_IMMEDIATELY };
+
 static VALUE usamin_alloc(const VALUE klass) {
-    UsaminValue** ptr = (UsaminValue**)ruby_xmalloc(sizeof(UsaminValue*));
+    UsaminValue** ptr;
+    VALUE ret = TypedData_Make_Struct(klass, UsaminValue*, &rb_usamin_value_type, ptr);
     *ptr = nullptr;
-    return Data_Wrap_Struct(klass, usamin_mark, usamin_free, ptr);
+    return ret;
 }
 
 
 static inline UsaminValue* get_value(VALUE value) {
     UsaminValue** ptr;
-    Data_Get_Struct(value, UsaminValue*, ptr);
+    TypedData_Get_Struct(value, UsaminValue*, &rb_usamin_value_type, ptr);
     return *ptr;
 }
 
 static inline void set_value(VALUE value, UsaminValue *usamin) {
     UsaminValue **ptr;
-    Data_Get_Struct(value, UsaminValue*, ptr);
+    TypedData_Get_Struct(value, UsaminValue*, &rb_usamin_value_type, ptr);
     *ptr = usamin;
 }
 
