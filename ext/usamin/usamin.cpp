@@ -10,7 +10,6 @@
 #include <rapidjson/writer.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/error/en.h>
-#include <iostream>
 
 #if SIZEOF_VALUE < SIZEOF_VOIDP
 #error SIZEOF_VOIDP must not be greater than SIZEOF_VALUE.
@@ -116,7 +115,7 @@ static void usamin_mark(void *p) {
     if (!p)
         return;
     UsaminValue **ptr = (UsaminValue**)p;
-    if (*ptr && (*ptr)->root_document != Qnil)
+    if (*ptr && !((*ptr)->free_flag))
         rb_gc_mark((*ptr)->root_document);
 }
 
@@ -144,7 +143,7 @@ static VALUE usamin_alloc(const VALUE klass) {
 
 
 static inline UsaminValue* get_value(VALUE value) {
-    UsaminValue** ptr;
+    UsaminValue **ptr;
     TypedData_Get_Struct(value, UsaminValue*, &rb_usamin_value_type, ptr);
     return *ptr;
 }
@@ -155,15 +154,19 @@ static inline void set_value(VALUE value, UsaminValue *usamin) {
     *ptr = usamin;
 }
 
-static inline VALUE make_hash(UsaminValue *value) {
+static inline VALUE make_hash(UsaminValue *value, bool is_root = false) {
     VALUE ret = rb_obj_alloc(rb_cUsaminHash);
     set_value(ret, value);
+    if (is_root)
+        value->root_document = ret;
     return ret;
 }
 
-static inline VALUE make_array(UsaminValue *value) {
+static inline VALUE make_array(UsaminValue *value, bool is_root = false) {
     VALUE ret = rb_obj_alloc(rb_cUsaminArray);
     set_value(ret, value);
+    if (is_root)
+        value->root_document = ret;
     return ret;
 }
 
@@ -467,9 +470,9 @@ static VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
     VALUE ret;
     switch (doc->GetType()) {
         case rapidjson::kObjectType:
-            return make_hash(new UsaminValue(doc, true));
+            return make_hash(new UsaminValue(doc, true), true);
         case rapidjson::kArrayType:
-            return make_array(new UsaminValue(doc, true));
+            return make_array(new UsaminValue(doc, true), true);
         case rapidjson::kNullType:
             delete doc;
             return Qnil;
@@ -539,9 +542,9 @@ static VALUE w_value_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_value(value);
     if (value->value->IsObject())
-        return eval_object(*(value->value), self);
+        return eval_object(*(value->value), value->root_document);
     else if (value->value->IsArray())
-        return eval_array(*(value->value), self);
+        return eval_array(*(value->value), value->root_document);
     else
         return Qnil;
 }
@@ -565,6 +568,17 @@ static VALUE w_value_isfrozen(const VALUE self) {
 }
 
 /*
+ * Returns root object.
+ *
+ * @return [UsaminValue]
+ */
+static VALUE w_value_root(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_value(value);
+    return value->root_document;
+}
+
+/*
  * Dumps data in JSON.
  *
  * @return [String]
@@ -580,8 +594,6 @@ static VALUE w_value_marshal_dump(const VALUE self) {
 
 /*
  * Loads marshal data.
- *
- * @return [self]
  */
 static VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
     Check_Type(source, T_STRING);
@@ -592,12 +604,14 @@ static VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());
     }
     if (doc->IsObject() || doc->IsArray()) {
-        set_value(self, new UsaminValue(doc, true));
-        return self;
+        UsaminValue *value = new UsaminValue(doc, true);
+        set_value(self, value);
+        value->root_document = self;
+    } else {
+        auto type = doc->GetType();
+        delete doc;
+        rb_raise(rb_eUsaminError, "Invalid Value Type for marshal_load: %d", type);
     }
-    auto type = doc->GetType();
-    delete doc;
-    rb_raise(rb_eUsaminError, "Invalid Value Type for marshal_load: %d", type);
     return Qnil;
 }
 
@@ -612,7 +626,7 @@ static VALUE w_hash_operator_indexer(const VALUE self, const VALUE key) {
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(key, m.name))
-            return eval(m.value, self);
+            return eval(m.value, value->root_document);
     return Qnil;
 }
 
@@ -626,7 +640,7 @@ static VALUE w_hash_assoc(const VALUE self, const VALUE key) {
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(key, m.name))
-            return rb_assoc_new(eval_str(m.name), eval(m.value, self));
+            return rb_assoc_new(eval_str(m.name), eval(m.value, value->root_document));
     return Qnil;
 }
 
@@ -639,7 +653,7 @@ static VALUE w_hash_compact(const VALUE self) {
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
         if (!m.value.IsNull())
-            rb_hash_aset(hash, eval(m.name, self), eval(m.value, self));
+            rb_hash_aset(hash, eval(m.name, value->root_document), eval(m.value, value->root_document));
     return hash;
 }
 
@@ -659,12 +673,12 @@ static VALUE w_hash_each(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, value->root_document) };
             rb_yield_values2(2, args);
         }
     } else {
         for (auto &m : value->value->GetObject())
-            rb_yield(rb_assoc_new(eval_str(m.name), eval(m.value, self)));
+            rb_yield(rb_assoc_new(eval_str(m.name), eval(m.value, value->root_document)));
     }
     return self;
 }
@@ -692,7 +706,7 @@ static VALUE w_hash_each_value(const VALUE self) {
     check_object(value);
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     for (auto &m : value->value->GetObject())
-        rb_yield(eval(m.value, self));
+        rb_yield(eval(m.value, value->root_document));
     return self;
 }
 
@@ -719,7 +733,7 @@ static VALUE w_hash_fetch(const int argc, const VALUE *argv, const VALUE self) {
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(argv[0], m.name))
-            return eval(m.value, self);
+            return eval(m.value, value->root_document);
     return argc == 2 ? argv[1] : rb_block_given_p() ? rb_yield(argv[0]) : Qnil;
 }
 
@@ -735,7 +749,7 @@ static VALUE w_hash_fetch_values(const int argc, VALUE *argv, const VALUE self) 
         bool found = false;
         for (auto &m : value->value->GetObject()) {
             if (str_compare_xx(argv[i], m.name)) {
-                rb_ary_push(ret, eval(m.value, self));
+                rb_ary_push(ret, eval(m.value, value->root_document));
                 found = true;
                 break;
             }
@@ -815,7 +829,7 @@ static VALUE w_hash_rassoc(const VALUE self, const VALUE val) {
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (rb_funcall(val, rb_intern("=="), 1, eval_r(m.value)))
-            return rb_assoc_new(eval_str(m.name), eval(m.value, self));
+            return rb_assoc_new(eval_str(m.name), eval(m.value, value->root_document));
     return Qnil;
 }
 
@@ -832,14 +846,14 @@ static VALUE w_hash_select(const VALUE self) {
     VALUE hash = rb_hash_new();
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, value->root_document) };
             if (RTEST(rb_yield_values2(2, args)))
                 rb_hash_aset(hash, args[0], args[1]);
         }
     } else {
         for (auto &m : value->value->GetObject()) {
             VALUE key = eval_str(m.name);
-            VALUE val = eval(m.value, self);
+            VALUE val = eval(m.value, value->root_document);
             if (RTEST(rb_yield(rb_assoc_new(key, val))))
                 rb_hash_aset(hash, key, val);
         }
@@ -860,14 +874,14 @@ static VALUE w_hash_reject(const VALUE self) {
     VALUE hash = rb_hash_new();
     if (rb_proc_arity(rb_block_proc()) > 1) {
         for (auto &m : value->value->GetObject()) {
-            VALUE args[] = { eval_str(m.name), eval(m.value, self) };
+            VALUE args[] = { eval_str(m.name), eval(m.value, value->root_document) };
             if (!RTEST(rb_yield_values2(2, args)))
                 rb_hash_aset(hash, args[0], args[1]);
         }
     } else {
         for (auto &m : value->value->GetObject()) {
             VALUE key = eval_str(m.name);
-            VALUE val = eval(m.value, self);
+            VALUE val = eval(m.value, value->root_document);
             if (!RTEST(rb_yield(rb_assoc_new(key, val))))
                 rb_hash_aset(hash, key, val);
         }
@@ -888,7 +902,7 @@ static VALUE w_hash_slice(const int argc, const VALUE *argv, const VALUE self) {
     for (int i = 0; i < argc; i++)
         for (auto &m : value->value->GetObject())
             if (str_compare_xx(argv[i], m.name))
-                rb_hash_aset(hash, eval_str(m.name), eval(m.value, self));
+                rb_hash_aset(hash, eval_str(m.name), eval(m.value, value->root_document));
     return hash;
 }
 
@@ -900,7 +914,7 @@ static VALUE w_hash_slice(const int argc, const VALUE *argv, const VALUE self) {
 static VALUE w_hash_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_object(value);
-    return eval_object(*(value->value), self);
+    return eval_object(*(value->value), value->root_document);
 }
 
 /*
@@ -911,7 +925,7 @@ static VALUE w_hash_to_a(const VALUE self) {
     check_object(value);
     VALUE ret = rb_ary_new2(value->value->MemberCount());
     for (auto &m : value->value->GetObject())
-        rb_ary_push(ret, rb_assoc_new(eval_str(m.name), eval(m.value, self)));
+        rb_ary_push(ret, rb_assoc_new(eval_str(m.name), eval(m.value, value->root_document)));
     return ret;
 }
 
@@ -923,7 +937,7 @@ static VALUE w_hash_values(const VALUE self) {
     check_object(value);
     VALUE ret = rb_ary_new2(value->value->MemberCount());
     for (auto &m : value->value->GetObject())
-        rb_ary_push(ret, eval(m.value, self));
+        rb_ary_push(ret, eval(m.value, value->root_document));
     return ret;
 }
 
@@ -938,7 +952,7 @@ static VALUE w_hash_transform_keys(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
-        rb_hash_aset(hash, rb_yield(eval_str(m.name)), eval(m.value, self));
+        rb_hash_aset(hash, rb_yield(eval_str(m.name)), eval(m.value, value->root_document));
     return hash;
 }
 
@@ -953,7 +967,7 @@ static VALUE w_hash_transform_values(const VALUE self) {
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, hash_enum_size);
     VALUE hash = rb_hash_new();
     for (auto &m : value->value->GetObject())
-        rb_hash_aset(hash, eval_str(m.name), rb_yield(eval(m.value, self)));
+        rb_hash_aset(hash, eval_str(m.name), rb_yield(eval(m.value, value->root_document)));
     return hash;
 }
 
@@ -969,7 +983,7 @@ static VALUE w_hash_values_at(const int argc, const VALUE *argv, const VALUE sel
         VALUE data = Qnil;
         for (auto &m : value->value->GetObject()) {
             if (str_compare_xx(argv[i], m.name)) {
-                data = eval(m.value, self);
+                data = eval(m.value, value->root_document);
                 break;
             }
         }
@@ -1008,7 +1022,7 @@ static VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const V
                 end = sz;
             VALUE ret = rb_ary_new2(end - beg);
             for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
-                rb_ary_push(ret, eval((*value->value)[i], self));
+                rb_ary_push(ret, eval((*value->value)[i], value->root_document));
             return ret;
         }
     } else if (rb_obj_is_kind_of(argv[0], rb_cRange)) {
@@ -1016,7 +1030,7 @@ static VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const V
         if (rb_range_beg_len(argv[0], &beg, &len, sz, 0) == Qtrue) {
             VALUE ret = rb_ary_new2(len);
             for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < beg + len; i++)
-                rb_ary_push(ret, eval((*value->value)[i], self));
+                rb_ary_push(ret, eval((*value->value)[i], value->root_document));
             return ret;
         }
     } else {
@@ -1024,7 +1038,7 @@ static VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const V
         if (l < 0)
             l += sz;
         if (0 <= l && l < sz)
-            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
+            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
     }
     return Qnil;
 }
@@ -1041,7 +1055,7 @@ static VALUE w_array_at(const VALUE self, const VALUE nth) {
     if (l < 0)
         l += sz;
     if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
     return Qnil;
 }
 
@@ -1054,7 +1068,7 @@ static VALUE w_array_compact(const VALUE self, const VALUE nth) {
     VALUE ret = rb_ary_new2(value->value->Size());
     for (auto &v : value->value->GetArray())
         if (!v.IsNull())
-            rb_ary_push(ret, eval(v, self));
+            rb_ary_push(ret, eval(v, value->root_document));
     return ret;
 }
 
@@ -1071,7 +1085,7 @@ static VALUE w_array_each(const VALUE self) {
     check_array(value);
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
     for (auto &v : value->value->GetArray())
-        rb_yield(eval(v, self));
+        rb_yield(eval(v, value->root_document));
     return self;
 }
 
@@ -1121,7 +1135,7 @@ static VALUE w_array_fetch(const int argc, const VALUE *argv, const VALUE self) 
     if (l < 0)
         l += sz;
     if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], self);
+        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
 
     if (argc == 2)
         return argv[1];
@@ -1157,7 +1171,7 @@ static VALUE w_array_find_index(const int argc, const VALUE *argv, const VALUE s
 
     RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
     for (rapidjson::SizeType i = 0; i < value->value->Size(); i++) {
-        if (RTEST(rb_yield(eval((*value->value)[i], self))))
+        if (RTEST(rb_yield(eval((*value->value)[i], value->root_document))))
             return UINT2NUM(i);
     }
     return Qnil;
@@ -1193,14 +1207,14 @@ static VALUE w_array_first(const int argc, const VALUE *argv, const VALUE self) 
     if (argc == 0) {
         if (sz == 0)
             return Qnil;
-        return eval(*value->value->Begin(), self);
+        return eval(*value->value->Begin(), value->root_document);
     } else {
         long l = FIX2LONG(argv[0]);
         if (l > sz)
             l = sz;
         VALUE ret = rb_ary_new2(l);
         for (auto v = value->value->Begin(); v < value->value->Begin() + l; v++)
-            rb_ary_push(ret, eval(*v, self));
+            rb_ary_push(ret, eval(*v, value->root_document));
         return ret;
     }
 }
@@ -1231,14 +1245,14 @@ static VALUE w_array_last(const int argc, const VALUE *argv, const VALUE self) {
     rapidjson::SizeType sz = value->value->Size();
 
     if (argc == 0) {
-        return sz > 0 ? eval(*(value->value->End() - 1), self) : Qnil;
+        return sz > 0 ? eval(*(value->value->End() - 1), value->root_document) : Qnil;
     } else {
         long l = FIX2LONG(argv[0]);
         if (l > sz)
             l = sz;
         VALUE ret = rb_ary_new2(l);
         for (auto v = value->value->End() - l; v < value->value->End(); v++)
-            rb_ary_push(ret, eval(*v, self));
+            rb_ary_push(ret, eval(*v, value->root_document));
         return ret;
     }
 }
@@ -1278,7 +1292,7 @@ static VALUE w_array_slice(const int argc, const VALUE *argv, const VALUE self) 
 static VALUE w_array_eval(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_array(value);
-    return eval_array(*(value->value), self);
+    return eval_array(*(value->value), value->root_document);
 }
 
 
@@ -1370,7 +1384,7 @@ extern "C" void Init_usamin(void) {
     rb_define_module_function(rb_mUsamin, "pretty_generate", RUBY_METHOD_FUNC(w_pretty_generate), -1);
 
     rb_cUsaminValue = rb_define_class_under(rb_mUsamin, "Value", rb_cObject);
-    rb_define_alloc_func(rb_cUsaminValue, usamin_alloc);
+    rb_undef_alloc_func(rb_cUsaminValue);
     rb_undef_method(rb_cUsaminValue, "initialize");
     rb_define_method(rb_cUsaminValue, "array?", RUBY_METHOD_FUNC(w_value_isarray), 0);
     rb_define_method(rb_cUsaminValue, "hash?", RUBY_METHOD_FUNC(w_value_isobject), 0);
@@ -1378,8 +1392,7 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminValue, "eval", RUBY_METHOD_FUNC(w_value_eval), 0);
     rb_define_method(rb_cUsaminValue, "eval_r", RUBY_METHOD_FUNC(w_value_eval_r), 0);
     rb_define_method(rb_cUsaminValue, "frozen?", RUBY_METHOD_FUNC(w_value_isfrozen), 0);
-    rb_define_method(rb_cUsaminValue, "marshal_dump", RUBY_METHOD_FUNC(w_value_marshal_dump), 0);
-    rb_define_method(rb_cUsaminValue, "marshal_load", RUBY_METHOD_FUNC(w_value_marshal_load), 1);
+    rb_define_method(rb_cUsaminValue, "root", RUBY_METHOD_FUNC(w_value_root), 0);
 
     rb_cUsaminHash = rb_define_class_under(rb_mUsamin, "Hash", rb_cUsaminValue);
     rb_include_module(rb_cUsaminHash, rb_mEnumerable);
@@ -1417,6 +1430,8 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "transform_values", RUBY_METHOD_FUNC(w_hash_transform_values), 0);
     rb_define_method(rb_cUsaminHash, "values", RUBY_METHOD_FUNC(w_hash_values), 0);
     rb_define_method(rb_cUsaminHash, "values_at", RUBY_METHOD_FUNC(w_hash_values_at), -1);
+    rb_define_method(rb_cUsaminHash, "marshal_dump", RUBY_METHOD_FUNC(w_value_marshal_dump), 0);
+    rb_define_method(rb_cUsaminHash, "marshal_load", RUBY_METHOD_FUNC(w_value_marshal_load), 1);
 
     rb_cUsaminArray = rb_define_class_under(rb_mUsamin, "Array", rb_cUsaminValue);
     rb_include_module(rb_cUsaminArray, rb_mEnumerable);
@@ -1439,6 +1454,8 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_slice), -1);
     rb_define_method(rb_cUsaminArray, "to_a", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "to_ary", RUBY_METHOD_FUNC(w_array_eval), 0);
+    rb_define_method(rb_cUsaminArray, "marshal_dump", RUBY_METHOD_FUNC(w_value_marshal_dump), 0);
+    rb_define_method(rb_cUsaminArray, "marshal_load", RUBY_METHOD_FUNC(w_value_marshal_load), 1);
 
     rb_eUsaminError = rb_define_class_under(rb_mUsamin, "UsaminError", rb_eStandardError);
     rb_eParserError = rb_define_class_under(rb_mUsamin, "ParserError", rb_eUsaminError);
