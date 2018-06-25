@@ -127,7 +127,7 @@ static size_t usamin_size(const void *p) {
     if (*ptr) {
         s += sizeof(UsaminValue);
         if ((*ptr)->free_flag)
-            s += ((RubynizedDocument*)(*ptr)->value)->GetAllocator().Capacity();
+            s += ((RubynizedDocument*)(*ptr)->value)->GetAllocator().Capacity() + ((RubynizedDocument*)(*ptr)->value)->GetStackCapacity();
     }
     return s;
 }
