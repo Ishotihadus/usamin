@@ -918,15 +918,11 @@ static VALUE w_hash_eval(const VALUE self) {
 }
 
 /*
- * @return [::Array<Object>]
+ * @return [::Hash]
  */
-static VALUE w_hash_to_a(const VALUE self) {
-    UsaminValue *value = get_value(self);
-    check_object(value);
-    VALUE ret = rb_ary_new2(value->value->MemberCount());
-    for (auto &m : value->value->GetObject())
-        rb_ary_push(ret, rb_assoc_new(eval_str(m.name), eval(m.value, value->root_document)));
-    return ret;
+static VALUE w_hash_merge(const int argc, const VALUE *argv, const VALUE self) {
+    static ID s = rb_intern("merge");
+    return rb_funcall2(w_hash_eval(self), s, argc, argv);
 }
 
 /*
@@ -1419,12 +1415,11 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "keys", RUBY_METHOD_FUNC(w_hash_keys), 0);
     rb_define_method(rb_cUsaminHash, "length", RUBY_METHOD_FUNC(w_hash_length), 0);
     rb_define_method(rb_cUsaminHash, "size", RUBY_METHOD_FUNC(w_hash_length), 0);
+    rb_define_method(rb_cUsaminHash, "merge", RUBY_METHOD_FUNC(w_hash_merge), -1);
     rb_define_method(rb_cUsaminHash, "rassoc", RUBY_METHOD_FUNC(w_hash_rassoc), 1);
     rb_define_method(rb_cUsaminHash, "reject", RUBY_METHOD_FUNC(w_hash_reject), 0);
     rb_define_method(rb_cUsaminHash, "select", RUBY_METHOD_FUNC(w_hash_select), 0);
     rb_define_method(rb_cUsaminHash, "slice", RUBY_METHOD_FUNC(w_hash_slice), -1);
-    rb_define_method(rb_cUsaminHash, "to_a", RUBY_METHOD_FUNC(w_hash_to_a), 0);
-    rb_define_method(rb_cUsaminHash, "to_h", RUBY_METHOD_FUNC(w_hash_eval), 0);
     rb_define_method(rb_cUsaminHash, "to_hash", RUBY_METHOD_FUNC(w_hash_eval), 0);
     rb_define_method(rb_cUsaminHash, "transform_keys", RUBY_METHOD_FUNC(w_hash_transform_keys), 0);
     rb_define_method(rb_cUsaminHash, "transform_values", RUBY_METHOD_FUNC(w_hash_transform_values), 0);
@@ -1452,7 +1447,6 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminArray, "length", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "size", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_slice), -1);
-    rb_define_method(rb_cUsaminArray, "to_a", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "to_ary", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "marshal_dump", RUBY_METHOD_FUNC(w_value_marshal_dump), 0);
     rb_define_method(rb_cUsaminArray, "marshal_load", RUBY_METHOD_FUNC(w_value_marshal_load), 1);
