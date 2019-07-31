@@ -10,11 +10,11 @@ module JSON
     end
 
     def self.parse(source, **options)
-        Usamin.parse(object)
+        Usamin.parse(source)
     end
 
     def self.load(source, proc = nil, **options)
-        ret = Usamin.parse(object)
+        ret = Usamin.parse(source)
         proc.call(ret) if proc
         ret
     end
