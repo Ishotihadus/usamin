@@ -39,7 +39,7 @@ typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAlloc
 
 rb_encoding *utf8;
 int utf8index;
-ID id_to_s;
+ID id_dig, id_to_s;
 VALUE rb_cUsaminValue, rb_cUsaminHash, rb_cUsaminArray, rb_eUsaminError, rb_eParserError;
 VALUE utf8value, sym_fast, sym_indent, sym_single_line_array;
 
@@ -670,6 +670,20 @@ static VALUE w_hash_compact(const VALUE self) {
     return hash;
 }
 
+/*
+ * @return [Object | nil]
+ */
+static VALUE w_hash_dig(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 1, UNLIMITED_ARGUMENTS);
+    VALUE value = w_hash_operator_indexer(self, argv[0]);
+    if (argc == 1)
+        return value;
+    else if (value == Qnil)
+        return Qnil;
+    else
+        return rb_funcall3(value, id_dig, argc - 1, argv + 1);
+}
+
 static VALUE hash_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
     return UINT2NUM(get_value(self)->value->MemberCount());
 }
@@ -1081,6 +1095,20 @@ static VALUE w_array_compact(const VALUE self, const VALUE nth) {
     return ret;
 }
 
+/*
+ * @return [Object | nil]
+ */
+static VALUE w_array_dig(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 1, UNLIMITED_ARGUMENTS);
+    VALUE value = w_array_at(self, argv[0]);
+    if (argc == 1)
+        return value;
+    else if (value == Qnil)
+        return Qnil;
+    else
+        return rb_funcall3(value, id_dig, argc - 1, argv + 1);
+}
+
 static VALUE array_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
     return UINT2NUM(get_value(self)->value->Size());
 }
@@ -1384,6 +1412,7 @@ extern "C" void Init_usamin(void) {
     sym_fast = rb_id2sym(rb_intern("fast"));
     sym_indent = rb_id2sym(rb_intern("indent"));
     sym_single_line_array = rb_id2sym(rb_intern("single_line_array"));
+    id_dig = rb_intern("dig");
     id_to_s = rb_intern("to_s");
 
     VALUE rb_mUsamin = rb_define_module("Usamin");
@@ -1412,6 +1441,7 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "[]", RUBY_METHOD_FUNC(w_hash_operator_indexer), 1);
     rb_define_method(rb_cUsaminHash, "assoc", RUBY_METHOD_FUNC(w_hash_assoc), 1);
     rb_define_method(rb_cUsaminHash, "compact", RUBY_METHOD_FUNC(w_hash_compact), 0);
+    rb_define_method(rb_cUsaminHash, "dig", RUBY_METHOD_FUNC(w_hash_dig), -1);
     rb_define_method(rb_cUsaminHash, "each", RUBY_METHOD_FUNC(w_hash_each), 0);
     rb_define_method(rb_cUsaminHash, "each_pair", RUBY_METHOD_FUNC(w_hash_each), 0);
     rb_define_method(rb_cUsaminHash, "each_key", RUBY_METHOD_FUNC(w_hash_each_key), 0);
@@ -1450,6 +1480,7 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminArray, "[]", RUBY_METHOD_FUNC(w_array_operator_indexer), -1);
     rb_define_method(rb_cUsaminArray, "at", RUBY_METHOD_FUNC(w_array_at), 1);
     rb_define_method(rb_cUsaminArray, "compact", RUBY_METHOD_FUNC(w_array_compact), 0);
+    rb_define_method(rb_cUsaminArray, "dig", RUBY_METHOD_FUNC(w_array_dig), -1);
     rb_define_method(rb_cUsaminArray, "each", RUBY_METHOD_FUNC(w_array_each), 0);
     rb_define_method(rb_cUsaminArray, "each_index", RUBY_METHOD_FUNC(w_array_each_index), 0);
     rb_define_method(rb_cUsaminArray, "empty?", RUBY_METHOD_FUNC(w_array_isempty), 0);
