@@ -16,3 +16,4 @@ Gemfile.lock
 .DS_Store
 /testdata/
 /vendor/
+/.vscode/
