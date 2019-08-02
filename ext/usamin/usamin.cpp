@@ -516,6 +516,19 @@ static VALUE w_parse(const int argc, const VALUE *argv, const VALUE self) {
 }
 
 /*
+ * Returns whether the value is equals to the other value.
+ *
+ * @return [Boolean]
+ */
+static VALUE w_value_equals(const VALUE self, const VALUE other) {
+    UsaminValue *value_self = get_value(self);
+    UsaminValue *value_other = get_value(other);
+    check_value(value_self);
+    check_value(value_other);
+    return value_self->value->operator==(*value_other->value) ? Qtrue : Qfalse;
+}
+
+/*
  * Returns whether the value is array.
  */
 static VALUE w_value_isarray(const VALUE self) {
@@ -1382,6 +1395,8 @@ extern "C" void Init_usamin(void) {
     rb_cUsaminValue = rb_define_class_under(rb_mUsamin, "Value", rb_cObject);
     rb_undef_alloc_func(rb_cUsaminValue);
     rb_undef_method(rb_cUsaminValue, "initialize");
+    rb_define_method(rb_cUsaminValue, "==", RUBY_METHOD_FUNC(w_value_equals), 1);
+    rb_define_method(rb_cUsaminValue, "===", RUBY_METHOD_FUNC(w_value_equals), 1);
     rb_define_method(rb_cUsaminValue, "array?", RUBY_METHOD_FUNC(w_value_isarray), 0);
     rb_define_method(rb_cUsaminValue, "hash?", RUBY_METHOD_FUNC(w_value_isobject), 0);
     rb_define_method(rb_cUsaminValue, "object?", RUBY_METHOD_FUNC(w_value_isobject), 0);
