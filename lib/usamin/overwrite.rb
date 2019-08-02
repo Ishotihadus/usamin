@@ -15,8 +15,22 @@ module JSON
 
     def self.load(source, proc = nil, **options)
         ret = Usamin.parse(source)
-        proc.call(ret) if proc
+        LoadProcCaller.load_call_proc(ret, proc) if proc
         ret
+    end
+
+    class LoadProcCaller
+        def self.load_call_proc(object, proc)
+            if object.is_a?(Array)
+                object.each{|e| load_call_proc(e, proc)}
+            elsif object.is_a?(Hash)
+                object.each do |k, v|
+                    proc.call(k)
+                    load_call_proc(v, proc)
+                end
+            end
+            proc.call(object)
+        end
     end
 
     class << self
