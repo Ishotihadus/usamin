@@ -794,6 +794,49 @@ static VALUE w_hash_fetch_values(const int argc, VALUE *argv, const VALUE self) 
     return ret;
 }
 
+static void flatten_array(RubynizedValue &value, VALUE array, int level, VALUE root_document);
+
+/*
+ *  @overload flatten(level = 1)
+ *   @return [::Array<Object>]
+ */
+static VALUE w_hash_flatten(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 0, 1);
+    UsaminValue *value = get_value(self);
+    check_object(value);
+
+    int level = 1;
+    if (argc == 1 && !NIL_P(argv[0])) {
+        level = NUM2INT(argv[0]);
+        if (level < 0)
+            level = -1;
+    }
+
+    if (level == 0) {
+        VALUE ret = rb_ary_new2(value->value->MemberCount());
+        for (auto &m : value->value->GetObject())
+            rb_ary_push(ret, rb_ary_new3(2, eval_str(m.name), eval(m.value, value->root_document)));
+        return ret;
+    }
+
+    VALUE ret = rb_ary_new2(value->value->MemberCount() * 2);
+    if (level == 1) {
+        for (auto &m : value->value->GetObject()) {
+            rb_ary_push(ret, eval_str(m.name));
+            rb_ary_push(ret, eval(m.value, value->root_document));
+        }
+    } else {
+        for (auto &m : value->value->GetObject()) {
+            rb_ary_push(ret, eval_str(m.name));
+            if (m.value.IsArray())
+                flatten_array(m.value, ret, level > 0 ? level - 2 : level, value->root_document);
+            else
+                rb_ary_push(ret, eval(m.value, value->root_document));
+        }
+    }
+    return ret;
+}
+
 /*
  * @note This method has linear time complexity.
  */
@@ -1214,6 +1257,39 @@ static VALUE w_array_find_index(const int argc, const VALUE *argv, const VALUE s
     return Qnil;
 }
 
+static void flatten_array(RubynizedValue &value, VALUE array, int level, VALUE root_document) {
+    if (level == 0)
+        for (auto &v : value.GetArray())
+            rb_ary_push(array, eval(v, root_document));
+    else
+        for (auto &v : value.GetArray())
+            if (v.IsArray())
+                flatten_array(v, array, level > 0 ? level - 1 : level, root_document);
+            else
+                rb_ary_push(array, eval(v, root_document));
+}
+
+/*
+ *  @overload flatten(lv = nil)
+ *   @return [::Array<Object>]
+ */
+static VALUE w_array_flatten(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 0, 1);
+    UsaminValue *value = get_value(self);
+    check_array(value);
+
+    int level = -1;
+    if (argc == 1 && !NIL_P(argv[0])) {
+        level = NUM2INT(argv[0]);
+        if (level <= 0)
+            return eval_array(*value->value, value->root_document);
+    }
+
+    VALUE ret = rb_ary_new2(value->value->Size());
+    flatten_array(*value->value, ret, level, value->root_document);
+    return ret;
+}
+
 /*
  * @overload index(val)
  *   @param [Object] val
@@ -1301,6 +1377,86 @@ static VALUE w_array_length(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_array(value);
     return UINT2NUM(value->value->Size());
+}
+
+/*
+ * @return [::Array<Object>]
+ */
+static VALUE w_array_reverse(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_array(value);
+
+    VALUE ret = rb_ary_new2(value->value->Size());
+    for (rapidjson::SizeType i = 0, j = value->value->Size() - 1; i < value->value->Size(); i++, j--)
+        rb_ary_push(ret, eval((*value->value)[j], value->root_document));
+    return ret;
+}
+
+/*
+ * @overload rindex(val)
+ *   @param [Object] val
+ *   @return [Integer | nil]
+ *
+ * @overload rindex
+ *   @yield [item]
+ *   @yieldparam item [Object]
+ *   @return [Integer | nil]
+ */
+static VALUE w_array_rindex(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 0, 1);
+    UsaminValue *value = get_value(self);
+    check_array(value);
+
+    if (argc == 1) {
+        for (rapidjson::SizeType i = 0, j = value->value->Size() - 1; i < value->value->Size(); i++, j--) {
+            if (rb_equal(argv[0], eval_r((*value->value)[j])) == Qtrue)
+                return UINT2NUM(j);
+        }
+        return Qnil;
+    }
+
+    RETURN_SIZED_ENUMERATOR(self, 0, nullptr, array_enum_size);
+    for (rapidjson::SizeType i = 0, j = value->value->Size() - 1; i < value->value->Size(); i++, j--) {
+        if (RTEST(rb_yield(eval((*value->value)[j], value->root_document))))
+            return UINT2NUM(j);
+    }
+    return Qnil;
+}
+
+/*
+ * @overload rotate(cnt = 1)
+ *   @return [::Array<Object>]
+ */
+static VALUE w_array_rotate(const int argc, const VALUE *argv, const VALUE self) {
+    rb_check_arity(argc, 0, 1);
+    UsaminValue *value = get_value(self);
+    check_array(value);
+
+    switch (value->value->Size()) {
+        case 0:
+            return rb_ary_new();
+        case 1:
+            return rb_ary_new3(1, eval(value->value->operator[](0), value->root_document));
+    }
+
+    int cnt = argc == 1 ? NUM2INT(argv[0]) : 1;
+    if (cnt >= 0) {
+        cnt = cnt % value->value->Size();
+    } else {
+        cnt = -cnt % value->value->Size();
+        if (cnt)
+            cnt = value->value->Size() - cnt;
+    }
+    if (cnt == 0)
+        return eval_array(*(value->value), value->root_document);
+
+    rapidjson::SizeType ucnt = cnt;
+    VALUE ret = rb_ary_new2(value->value->Size());
+    for (rapidjson::SizeType i = ucnt; i < value->value->Size(); i++)
+        rb_ary_push(ret, eval((*value->value)[i], value->root_document));
+    for (rapidjson::SizeType i = 0; i < ucnt; i++)
+        rb_ary_push(ret, eval((*value->value)[i], value->root_document));
+    return ret;
 }
 
 /*
@@ -1449,6 +1605,7 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "empty?", RUBY_METHOD_FUNC(w_hash_isempty), 0);
     rb_define_method(rb_cUsaminHash, "fetch", RUBY_METHOD_FUNC(w_hash_fetch), -1);
     rb_define_method(rb_cUsaminHash, "fetch_values", RUBY_METHOD_FUNC(w_hash_fetch_values), -1);
+    rb_define_method(rb_cUsaminHash, "flatten", RUBY_METHOD_FUNC(w_hash_flatten), -1);
     rb_define_method(rb_cUsaminHash, "has_key?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
     rb_define_method(rb_cUsaminHash, "include?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
     rb_define_method(rb_cUsaminHash, "key?", RUBY_METHOD_FUNC(w_hash_haskey), 1);
@@ -1486,11 +1643,15 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminArray, "empty?", RUBY_METHOD_FUNC(w_array_isempty), 0);
     rb_define_method(rb_cUsaminArray, "fetch", RUBY_METHOD_FUNC(w_array_fetch), -1);
     rb_define_method(rb_cUsaminArray, "find_index", RUBY_METHOD_FUNC(w_array_find_index), -1);
+    rb_define_method(rb_cUsaminArray, "flatten", RUBY_METHOD_FUNC(w_array_flatten), -1);
     rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_index), -1);
     rb_define_method(rb_cUsaminArray, "first", RUBY_METHOD_FUNC(w_array_first), -1);
     rb_define_method(rb_cUsaminArray, "include?", RUBY_METHOD_FUNC(w_array_include), 1);
     rb_define_method(rb_cUsaminArray, "last", RUBY_METHOD_FUNC(w_array_last), -1);
     rb_define_method(rb_cUsaminArray, "length", RUBY_METHOD_FUNC(w_array_length), 0);
+    rb_define_method(rb_cUsaminArray, "reverse", RUBY_METHOD_FUNC(w_array_reverse), 0);
+    rb_define_method(rb_cUsaminArray, "rindex", RUBY_METHOD_FUNC(w_array_rindex), -1);
+    rb_define_method(rb_cUsaminArray, "rotate", RUBY_METHOD_FUNC(w_array_rotate), -1);
     rb_define_method(rb_cUsaminArray, "size", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_slice), -1);
     rb_define_method(rb_cUsaminArray, "to_ary", RUBY_METHOD_FUNC(w_array_eval), 0);
