@@ -1012,6 +1012,36 @@ static VALUE w_hash_key(const VALUE self, const VALUE val) {
 }
 
 /*
+ * @return [String]
+ */
+static VALUE w_hash_inspect(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_object(value);
+    VALUE ret = rb_str_new2("{");
+    bool first = true;
+    for (auto &m : value->value->GetObject()) {
+        if (!first)
+            ret = rb_str_cat2(ret, ", ");
+        ret = rb_str_append(ret, rb_inspect(eval_str(m.name)));
+        ret = rb_str_cat2(ret, "=>");
+        switch (m.value.GetType()) {
+            case rapidjson::kObjectType:
+                ret = rb_str_cat2(ret, "{...}");
+                break;
+            case rapidjson::kArrayType:
+                ret = rb_str_cat2(ret, "[...]");
+                break;
+            default:
+                ret = rb_str_append(ret, rb_inspect(eval(m.value, value->root_document)));
+                break;
+        }
+        first = false;
+    }
+    ret = rb_str_cat2(ret, "}");
+    return ret;
+}
+
+/*
  * @return [::Array<String>]
  */
 static VALUE w_hash_keys(const VALUE self) {
@@ -1486,6 +1516,34 @@ static VALUE w_array_include(const VALUE self, const VALUE val) {
 }
 
 /*
+ * @return [String]
+ */
+static VALUE w_array_inspect(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_array(value);
+    VALUE ret = rb_str_new2("[");
+    bool first = true;
+    for (auto &v : value->value->GetArray()) {
+        if (!first)
+            ret = rb_str_cat2(ret, ", ");
+        switch (v.GetType()) {
+            case rapidjson::kObjectType:
+                ret = rb_str_cat2(ret, "{...}");
+                break;
+            case rapidjson::kArrayType:
+                ret = rb_str_cat2(ret, "[...]");
+                break;
+            default:
+                ret = rb_str_append(ret, rb_inspect(eval(v, value->root_document)));
+                break;
+        }
+        first = false;
+    }
+    ret = rb_str_cat2(ret, "]");
+    return ret;
+}
+
+/*
  * @overload last
  *   @return [Object | nil]
  *
@@ -1757,6 +1815,8 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminHash, "value?", RUBY_METHOD_FUNC(w_hash_hasvalue), 1);
     rb_define_method(rb_cUsaminHash, "key", RUBY_METHOD_FUNC(w_hash_key), 1);
     rb_define_method(rb_cUsaminHash, "index", RUBY_METHOD_FUNC(w_hash_key), 1);
+    rb_define_method(rb_cUsaminHash, "inspect", RUBY_METHOD_FUNC(w_hash_inspect), 0);
+    rb_define_method(rb_cUsaminHash, "to_s", RUBY_METHOD_FUNC(w_hash_inspect), 0);
     rb_define_method(rb_cUsaminHash, "keys", RUBY_METHOD_FUNC(w_hash_keys), 0);
     rb_define_method(rb_cUsaminHash, "length", RUBY_METHOD_FUNC(w_hash_length), 0);
     rb_define_method(rb_cUsaminHash, "size", RUBY_METHOD_FUNC(w_hash_length), 0);
@@ -1790,6 +1850,8 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_index), -1);
     rb_define_method(rb_cUsaminArray, "first", RUBY_METHOD_FUNC(w_array_first), -1);
     rb_define_method(rb_cUsaminArray, "include?", RUBY_METHOD_FUNC(w_array_include), 1);
+    rb_define_method(rb_cUsaminArray, "inspect", RUBY_METHOD_FUNC(w_array_inspect), 0);
+    rb_define_method(rb_cUsaminArray, "to_s", RUBY_METHOD_FUNC(w_array_inspect), 0);
     rb_define_method(rb_cUsaminArray, "last", RUBY_METHOD_FUNC(w_array_last), -1);
     rb_define_method(rb_cUsaminArray, "length", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "reverse", RUBY_METHOD_FUNC(w_array_reverse), 0);
