@@ -270,6 +270,110 @@ static inline VALUE eval_array_r(RubynizedValue &value) {
     return ret;
 }
 
+static bool eql_array(RubynizedValue&, RubynizedValue&);
+static bool eql_object(RubynizedValue&, RubynizedValue&);
+
+static bool eql_value(RubynizedValue &self, RubynizedValue &other) {
+    if (self.GetType() != other.GetType())
+        return false;
+    switch (self.GetType()) {
+        case rapidjson::kObjectType:
+            return eql_object(self, other);
+        case rapidjson::kArrayType:
+            return eql_array(self, other);
+        case rapidjson::kStringType:
+            return self == other;
+        case rapidjson::kNumberType:
+            return self == other && self.IsInt() == other.IsInt() &&
+                self.IsUint() == other.IsUint() && self.IsInt64() == other.IsInt64() &&
+                self.IsUint64() == other.IsUint64() && self.IsDouble() == other.IsDouble();
+        default:
+            return true;
+    }
+}
+
+static bool eql_object(RubynizedValue &self, RubynizedValue &other) {
+    if (self.MemberCount() != other.MemberCount())
+        return false;
+    for (auto &m : self.GetObject()) {
+        if (!other.HasMember(m.name))
+            return false;
+        if (!eql_value(m.value, other[m.name]))
+            return false;
+    }
+    return true;
+}
+
+static bool eql_array(RubynizedValue &self, RubynizedValue &other) {
+    if (self.Size() != other.Size())
+        return false;
+    for (rapidjson::SizeType i = 0; i < self.Size(); i++) {
+        if (!eql_value(self[i], other[i]))
+            return false;
+    }
+    return true;
+}
+
+static st_index_t hash_object(RubynizedValue &value);
+static st_index_t hash_array(RubynizedValue &value);
+
+static st_index_t hash_value(RubynizedValue &value) {
+    auto type = value.GetType();
+    st_index_t h = rb_hash_start((st_index_t)type);
+    rb_hash_uint(h, (st_index_t)hash_value);
+    switch (type) {
+        case rapidjson::kNullType:
+            h = rb_hash_uint(h, NUM2LONG(rb_hash(Qnil)));
+            break;
+        case rapidjson::kFalseType:
+            h = rb_hash_uint(h, NUM2LONG(rb_hash(Qfalse)));
+            break;
+        case rapidjson::kTrueType:
+            h = rb_hash_uint(h, NUM2LONG(rb_hash(Qtrue)));
+            break;
+        case rapidjson::kObjectType:
+            h = rb_hash_uint(h, hash_object(value));
+            break;
+        case rapidjson::kArrayType:
+            h = rb_hash_uint(h, hash_array(value));
+            break;
+        case rapidjson::kStringType:
+            h = rb_hash_uint(h, rb_str_hash(eval_str(value)));
+            break;
+        case rapidjson::kNumberType:
+            if (value.IsInt())
+                h = rb_hash_uint(h, 0x770);
+            if (value.IsUint())
+                h = rb_hash_uint(h, 0x771);
+            if (value.IsInt64())
+                h = rb_hash_uint(h, 0x772);
+            if (value.IsUint64())
+                h = rb_hash_uint(h, 0x773);
+            if (value.IsDouble())
+                h = rb_hash_uint(h, 0x774);
+            h = rb_hash_uint(h, NUM2LONG(rb_hash(eval_num(value))));
+    }
+    return rb_hash_end(h);
+}
+
+static st_index_t hash_object(RubynizedValue &value) {
+    st_index_t h = rb_hash_start(value.MemberCount());
+    h = rb_hash_uint(h, (st_index_t)hash_object);
+    for (auto &m : value.GetObject()) {
+        h = rb_hash_uint(h, rb_str_hash(eval_str(m.name)));
+        h = rb_hash_uint(h, hash_value(m.value));
+    }
+    return rb_hash_end(h);
+}
+
+static st_index_t hash_array(RubynizedValue &value) {
+    st_index_t h = rb_hash_start(value.Size());
+    h = rb_hash_uint(h, (st_index_t)hash_array);
+    for (auto &v : value.GetArray())
+        h = rb_hash_uint(h, hash_value(v));
+    return rb_hash_end(h);
+}
+
 
 template <class Writer> static inline void write_str(Writer&, const VALUE);
 template <class Writer> static inline void write_hash(Writer&, const VALUE);
@@ -587,10 +691,34 @@ static VALUE w_value_eval_r(const VALUE self) {
 }
 
 /*
+ * @return [Boolean]
+ */
+static VALUE w_value_eql(const VALUE self, const VALUE other) {
+    if (self == other)
+        return Qtrue;
+    if (!rb_obj_is_kind_of(other, rb_cUsaminValue))
+        return Qfalse;
+    UsaminValue *value_self = get_value(self);
+    UsaminValue *value_other = get_value(other);
+    check_value(value_self);
+    check_value(value_other);
+    return eql_value(*value_self->value, *value_other->value) ? Qtrue : Qfalse;
+}
+
+/*
  * Always true.
  */
 static VALUE w_value_isfrozen(const VALUE self) {
     return Qtrue;
+}
+
+/*
+ * @return [Integer]
+ */
+static VALUE w_value_hash(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_value(value);
+    return ST2FIX(hash_value(*value->value));
 }
 
 /*
@@ -1600,7 +1728,9 @@ extern "C" void Init_usamin(void) {
     rb_define_method(rb_cUsaminValue, "object?", RUBY_METHOD_FUNC(w_value_isobject), 0);
     rb_define_method(rb_cUsaminValue, "eval", RUBY_METHOD_FUNC(w_value_eval), 0);
     rb_define_method(rb_cUsaminValue, "eval_r", RUBY_METHOD_FUNC(w_value_eval_r), 0);
+    rb_define_method(rb_cUsaminValue, "eql?", RUBY_METHOD_FUNC(w_value_eql), 1);
     rb_define_method(rb_cUsaminValue, "frozen?", RUBY_METHOD_FUNC(w_value_isfrozen), 0);
+    rb_define_method(rb_cUsaminValue, "hash", RUBY_METHOD_FUNC(w_value_hash), 0);
     rb_define_method(rb_cUsaminValue, "root", RUBY_METHOD_FUNC(w_value_root), 0);
 
     rb_cUsaminHash = rb_define_class_under(rb_mUsamin, "Hash", rb_cUsaminValue);
