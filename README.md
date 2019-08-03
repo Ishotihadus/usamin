@@ -69,9 +69,10 @@ Usamin.parse(json)
 
 ```ruby
 data = Usamin.load(json)
+#=> => [{...}, {...}]
 ```
 
-Here, `data` is not a Array, but this can be handled like an Array.
+Here, `data` is not an Array, but this can be handled like an Array.
 
 ```ruby
 data.size
@@ -107,7 +108,7 @@ Usamin.load(json).eval_r
 #### Notes about lazy loading data
 
 - Frozen. Modification is not allowed.
-- A key list of Hash is based on not hash tables but arrays. An index access to hash costs O(n).
+- Hash objects are based on not hash tables but arrays. An index access to an object costs O(n).
 
 ### Generating
 
