@@ -1,3 +1,3 @@
 module Usamin
-    VERSION = "7.7.8"
+    VERSION = '7.7.9'.freeze
 end
