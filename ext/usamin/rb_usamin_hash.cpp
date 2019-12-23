@@ -131,12 +131,14 @@ VALUE w_hash_isempty(const VALUE self) {
  */
 VALUE w_hash_fetch(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 1, 2);
+    if (argc == 2 && rb_block_given_p())
+        rb_warn("block supersedes default value argument");
     UsaminValue *value = get_value(self);
     check_object(value);
     for (auto &m : value->value->GetObject())
         if (str_compare_xx(argv[0], m.name))
             return eval(m.value, value->root_document);
-    return argc == 2 ? argv[1] : rb_block_given_p() ? rb_yield(argv[0]) : Qnil;
+    return rb_block_given_p() ? rb_yield(argv[0]) : argc == 2 ? argv[1] : Qnil;
 }
 
 /*
