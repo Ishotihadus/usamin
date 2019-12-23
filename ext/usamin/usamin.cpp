@@ -13,7 +13,7 @@
 rb_encoding *utf8;
 int utf8index;
 ID id_dig, id_to_s;
-VALUE rb_cUsaminValue, rb_cUsaminHash, rb_cUsaminArray, rb_eUsaminError, rb_eParserError;
+VALUE rb_mUsamin, rb_cUsaminValue, rb_cUsaminHash, rb_cUsaminArray, rb_eUsaminError, rb_eParserError;
 VALUE utf8value, sym_fast, sym_indent, sym_single_line_array, sym_symbolize_names;
 
 extern "C" {
@@ -28,7 +28,7 @@ void Init_usamin() {
     id_dig = rb_intern("dig");
     id_to_s = rb_intern("to_s");
 
-    VALUE rb_mUsamin = rb_define_module("Usamin");
+    rb_mUsamin = rb_define_module("Usamin");
     rb_define_module_function(rb_mUsamin, "load", RUBY_METHOD_FUNC(w_load), -1);
     rb_define_module_function(rb_mUsamin, "parse", RUBY_METHOD_FUNC(w_parse), -1);
     rb_define_module_function(rb_mUsamin, "generate", RUBY_METHOD_FUNC(w_generate), 1);

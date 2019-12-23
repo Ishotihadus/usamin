@@ -7,8 +7,6 @@
 #include "usamin_value.hpp"
 #include "parser_helper.hpp"
 
-extern VALUE rb_cUsaminValue, rb_eUsaminError, rb_eParserError;
-
 static void usamin_free(void *p) {
     if (!p)
         return;
@@ -112,6 +110,7 @@ static bool eql_array(RubynizedValue &self, RubynizedValue &other) {
  * @return [Boolean]
  */
 VALUE w_value_equal(const VALUE self, const VALUE other) {
+    extern VALUE rb_cUsaminValue;
     if (self == other)
         return Qtrue;
     UsaminValue *value_self = get_value(self);
@@ -192,6 +191,7 @@ VALUE w_value_eval_r(const int argc, const VALUE *argv, const VALUE self) {
  * @return [Boolean]
  */
 VALUE w_value_eql(const VALUE self, const VALUE other) {
+    extern VALUE rb_cUsaminValue;
     if (self == other)
         return Qtrue;
     if (!rb_obj_is_kind_of(other, rb_cUsaminValue))
@@ -296,18 +296,15 @@ VALUE w_value_root(const VALUE self) {
  * @return [String]
  */
 VALUE w_value_marshal_dump(const VALUE self) {
-    UsaminValue *value = get_value(self);
-    check_value(value);
-    rapidjson::StringBuffer buf;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
-    write_value(writer, *value->value);
-    return rb_str_new(buf.GetString(), buf.GetSize());
+    extern VALUE rb_mUsamin;
+    return w_generate(rb_mUsamin, self);
 }
 
 /*
  * Loads marshal data.
  */
 VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
+    extern VALUE rb_cUsaminHash, rb_cUsaminArray, rb_eUsaminError, rb_eParserError;
     Check_Type(source, T_STRING);
     RubynizedDocument *doc = new RubynizedDocument();
     rapidjson::ParseResult result =
@@ -316,14 +313,15 @@ VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
         delete doc;
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());
     }
-    if (doc->IsObject() || doc->IsArray()) {
+    if ((rb_obj_is_instance_of(self, rb_cUsaminHash) && doc->IsObject()) ||
+        (rb_obj_is_instance_of(self, rb_cUsaminArray) && doc->IsArray())) {
         UsaminValue *value = new UsaminValue(doc, true);
         set_value(self, value);
         value->root_document = self;
     } else {
         auto type = doc->GetType();
         delete doc;
-        rb_raise(rb_eUsaminError, "Invalid Value Type for marshal_load: %d", type);
+        rb_raise(rb_eUsaminError, "type mismatch in marshal load: %d", type);
     }
     return Qnil;
 }
