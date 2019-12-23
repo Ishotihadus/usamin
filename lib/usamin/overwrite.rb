@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'json'
 require 'usamin'
 
 module JSON
@@ -11,12 +12,16 @@ module JSON
     options[:indent] ? Usamin.pretty_generate(object, indent: options[:indent]) : Usamin.pretty_generate(object)
   end
 
-  def self.parse(source, **_options)
-    Usamin.parse(source)
+  def self.parse(source, **options)
+    begin
+      Usamin.parse(source, symbolize_names: options[:symbolize_names])
+    rescue Usamin::ParserError
+      raise JSON::ParserError.new($!.message)
+    end
   end
 
-  def self.load(source, proc = nil, **_options)
-    ret = Usamin.parse(source)
+  def self.load(source, proc = nil, **options)
+    ret = Usamin.parse(source, **options)
     LoadProcCaller.load_call_proc(ret, proc) if proc
     ret
   end
