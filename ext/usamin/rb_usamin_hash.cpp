@@ -409,7 +409,9 @@ VALUE w_hash_eval(const VALUE self) {
  */
 VALUE w_hash_merge(const int argc, const VALUE *argv, const VALUE self) {
     static ID s = rb_intern("merge");
-    return rb_funcall2(w_hash_eval(self), s, argc, argv);
+    VALUE args, block;
+    rb_scan_args(argc, argv, "*&", &args, &block);
+    return rb_funcall_with_block(w_hash_eval(self), s, (int)RARRAY_LEN(args), RARRAY_CONST_PTR(args), block);
 }
 
 /*
