@@ -193,6 +193,8 @@ VALUE w_array_find_index(const int argc, const VALUE *argv, const VALUE self) {
     check_array(value);
 
     if (argc == 1) {
+        if (rb_block_given_p())
+            rb_warn("given block not used");
         for (rapidjson::SizeType i = 0; i < value->value->Size(); i++) {
             if (rb_equal(argv[0], eval_r((*value->value)[i], 0)) == Qtrue)
                 return UINT2NUM(i);
@@ -239,20 +241,6 @@ VALUE w_array_flatten(const int argc, const VALUE *argv, const VALUE self) {
     VALUE ret = rb_ary_new2(value->value->Size());
     flatten_array(*value->value, ret, level, value->root_document);
     return ret;
-}
-
-/*
- * @overload index(val)
- *   @param [Object] val
- *   @return [Integer | nil]
- *
- * @overload index
- *   @yield [item]
- *   @yieldparam item [Object]
- *   @return [Integer | nil]
- */
-VALUE w_array_index(const int argc, const VALUE *argv, const VALUE self) {
-    return w_array_find_index(argc, argv, self);
 }
 
 /*

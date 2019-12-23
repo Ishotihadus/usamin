@@ -107,8 +107,8 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminArray, "empty?", RUBY_METHOD_FUNC(w_array_isempty), 0);
     rb_define_method(rb_cUsaminArray, "fetch", RUBY_METHOD_FUNC(w_array_fetch), -1);
     rb_define_method(rb_cUsaminArray, "find_index", RUBY_METHOD_FUNC(w_array_find_index), -1);
+    rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_find_index), -1);
     rb_define_method(rb_cUsaminArray, "flatten", RUBY_METHOD_FUNC(w_array_flatten), -1);
-    rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_index), -1);
     rb_define_method(rb_cUsaminArray, "first", RUBY_METHOD_FUNC(w_array_first), -1);
     rb_define_method(rb_cUsaminArray, "include?", RUBY_METHOD_FUNC(w_array_include), 1);
     rb_define_method(rb_cUsaminArray, "inspect", RUBY_METHOD_FUNC(w_array_inspect), 0);

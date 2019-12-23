@@ -16,7 +16,6 @@ VALUE w_array_isempty(const VALUE self);
 VALUE w_array_fetch(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_find_index(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_flatten(const int argc, const VALUE *argv, const VALUE self);
-VALUE w_array_index(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_first(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_include(const VALUE self, const VALUE val);
 VALUE w_array_inspect(const VALUE self);
