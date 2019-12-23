@@ -448,6 +448,18 @@ VALUE w_hash_values(const VALUE self) {
     return ret;
 }
 
+static VALUE hash_proc_call(RB_BLOCK_CALL_FUNC_ARGLIST(key, self)) {
+    rb_check_arity(argc, 1, 1);
+    return w_hash_operator_indexer(self, key);
+}
+
+/*
+ * @return [Proc]
+ */
+VALUE w_hash_to_proc(const VALUE self) {
+    return rb_proc_new(RUBY_METHOD_FUNC(hash_proc_call), self);
+}
+
 /*
  * @yield [key]
  * @yieldparam key [String]

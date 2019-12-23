@@ -154,6 +154,12 @@ class UsaminHashTest < Minitest::Test
     assert_equal(@data.to_hash, @data.eval)
   end
 
+  def test_to_proc
+    pr = @data.to_proc
+    assert_instance_of(Proc, pr)
+    assert_equal(['b', 'c', 'e'].map(&pr), [1, 2, nil])
+  end
+
   def test_transform_keys
     assert_equal(@data.transform_keys{|k| k * 2}, { 'aa' => 0, 'bb' => 1, 'cc' => 2, 'dd' => nil })
   end

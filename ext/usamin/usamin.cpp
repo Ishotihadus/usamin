@@ -86,6 +86,7 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminHash, "select", RUBY_METHOD_FUNC(w_hash_select), 0);
     rb_define_method(rb_cUsaminHash, "slice", RUBY_METHOD_FUNC(w_hash_slice), -1);
     rb_define_method(rb_cUsaminHash, "to_hash", RUBY_METHOD_FUNC(w_hash_eval), 0);
+    rb_define_method(rb_cUsaminHash, "to_proc", RUBY_METHOD_FUNC(w_hash_to_proc), 0);
     rb_define_method(rb_cUsaminHash, "transform_keys", RUBY_METHOD_FUNC(w_hash_transform_keys), 0);
     rb_define_method(rb_cUsaminHash, "transform_values", RUBY_METHOD_FUNC(w_hash_transform_values), 0);
     rb_define_method(rb_cUsaminHash, "values", RUBY_METHOD_FUNC(w_hash_values), 0);

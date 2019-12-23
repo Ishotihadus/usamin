@@ -29,6 +29,7 @@ VALUE w_hash_slice(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_hash_eval(const VALUE self);
 VALUE w_hash_merge(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_hash_values(const VALUE self);
+VALUE w_hash_to_proc(const VALUE self);
 VALUE w_hash_transform_keys(const VALUE self);
 VALUE w_hash_transform_values(const VALUE self);
 VALUE w_hash_values_at(const int argc, const VALUE *argv, const VALUE self);
