@@ -25,17 +25,19 @@ VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const VALUE se
     if (argc == 2) {
         long beg = FIX2LONG(argv[0]);
         long len = FIX2LONG(argv[1]);
+        if (beg > sz || len < 0)
+            return Qnil;
         if (beg < 0)
             beg += sz;
-        if (beg >= 0 && len >= 0) {
-            rapidjson::SizeType end = static_cast<rapidjson::SizeType>(beg + len);
-            if (end > sz)
-                end = sz;
-            VALUE ret = rb_ary_new2(end - beg);
-            for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
-                rb_ary_push(ret, eval((*value->value)[i], value->root_document));
-            return ret;
-        }
+        if (beg < 0)
+            return Qnil;
+        rapidjson::SizeType end = static_cast<rapidjson::SizeType>(beg + len);
+        if (end > sz)
+            end = sz;
+        VALUE ret = rb_ary_new2(end - beg);
+        for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
+            rb_ary_push(ret, eval((*value->value)[i], value->root_document));
+        return ret;
     } else if (rb_obj_is_kind_of(argv[0], rb_cRange)) {
         long beg, len;
         if (rb_range_beg_len(argv[0], &beg, &len, sz, 0) == Qtrue) {
