@@ -114,6 +114,7 @@ class UsaminHashTest < Minitest::Test
 
   def test_invert
     assert_equal(@data.invert, { 0 => 'a', 1 => 'b', 2 => 'c', nil => 'd' })
+    assert_equal(Usamin.load('{"a": 3, "b": 3}').invert, { 3 => 'b' })
   end
 
   def test_keys
