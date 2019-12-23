@@ -206,7 +206,7 @@ VALUE w_value_eql(const VALUE self, const VALUE other) {
 /*
  * Always true.
  */
-VALUE w_value_isfrozen(const VALUE self) {
+VALUE w_value_isfrozen(const VALUE) {
     return Qtrue;
 }
 
@@ -310,8 +310,8 @@ VALUE w_value_marshal_dump(const VALUE self) {
 VALUE w_value_marshal_load(const VALUE self, const VALUE source) {
     Check_Type(source, T_STRING);
     RubynizedDocument *doc = new RubynizedDocument();
-    rapidjson::ParseResult result = doc->Parse<RAPIDJSON_PARSE_FLAGS_FOR_MARSHAL>(
-      RSTRING_PTR(source), RSTRING_LEN(source));
+    rapidjson::ParseResult result =
+      doc->Parse<RAPIDJSON_PARSE_FLAGS_FOR_MARSHAL>(RSTRING_PTR(source), RSTRING_LEN(source));
     if (!result) {
         delete doc;
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());

@@ -24,7 +24,7 @@ static inline rapidjson::ParseResult parse(RubynizedDocument &doc, const VALUE s
  *   @option opts :fast fast mode (but not precise)
  *   @return [Object]
  */
-VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
+VALUE w_load(const int argc, const VALUE *argv, const VALUE) {
     extern VALUE rb_eUsaminError, rb_eParserError, sym_fast;
 
     VALUE source, options;
@@ -75,7 +75,7 @@ VALUE w_load(const int argc, const VALUE *argv, const VALUE self) {
  *   @option opts :symbolize_names symbolize keys of all Hash objects
  *   @return [Object]
  */
-VALUE w_parse(const int argc, const VALUE *argv, const VALUE self) {
+VALUE w_parse(const int argc, const VALUE *argv, const VALUE) {
     extern VALUE rb_eParserError, sym_fast, sym_symbolize_names;
 
     VALUE source, options;

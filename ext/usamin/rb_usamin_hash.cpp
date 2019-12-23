@@ -81,7 +81,7 @@ VALUE w_hash_dig(const int argc, const VALUE *argv, const VALUE self) {
     return rb_funcall3(value, id_dig, argc - 1, argv + 1);
 }
 
-static VALUE hash_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
+static VALUE hash_enum_size(const VALUE self, const VALUE, const VALUE) {
     return UINT2NUM(get_value(self)->value->MemberCount());
 }
 

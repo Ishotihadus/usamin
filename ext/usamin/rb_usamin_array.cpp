@@ -73,7 +73,7 @@ VALUE w_array_at(const VALUE self, const VALUE nth) {
 /*
  * @return [::Array]
  */
-VALUE w_array_compact(const VALUE self, const VALUE nth) {
+VALUE w_array_compact(const VALUE self) {
     UsaminValue *value = get_value(self);
     check_array(value);
     VALUE ret = rb_ary_new2(value->value->Size());
@@ -97,7 +97,7 @@ VALUE w_array_dig(const int argc, const VALUE *argv, const VALUE self) {
     return rb_funcall3(value, id_dig, argc - 1, argv + 1);
 }
 
-static VALUE array_enum_size(const VALUE self, const VALUE args, const VALUE eobj) {
+static VALUE array_enum_size(const VALUE self, const VALUE, const VALUE) {
     return UINT2NUM(get_value(self)->value->Size());
 }
 

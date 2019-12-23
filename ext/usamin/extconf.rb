@@ -8,6 +8,7 @@ dir_config('rapidjson')
 append_cppflags('-O3')
 append_cppflags('-Wall')
 append_cppflags('-Wextra')
+append_cppflags('-Wno-missing-field-initializers')
 append_cppflags('-Wvla')
 
 if checking_for('whether -march=native is accepted as CPPFLAGS'){try_cppflags('-march=native')}

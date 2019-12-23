@@ -144,7 +144,7 @@ static inline void write_usamin(Writer &writer, const VALUE self) {
  *   @param [Object] obj an object to serialize
  *   @return [String]
  */
-VALUE w_generate(const VALUE self, const VALUE value) {
+VALUE w_generate(const VALUE, const VALUE value) {
     rapidjson::StringBuffer buf;
     rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
     write(writer, value);
@@ -161,7 +161,7 @@ VALUE w_generate(const VALUE self, const VALUE value) {
  *   @option opts [Boolean] :single_line_array (false)
  *   @return [String]
  */
-VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE self) {
+VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE) {
     extern VALUE rb_eUsaminError;
     extern VALUE sym_indent, sym_single_line_array;
 

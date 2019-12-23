@@ -8,7 +8,7 @@ void flatten_array(RubynizedValue &value, VALUE array, int level, VALUE root_doc
 
 VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_at(const VALUE self, const VALUE nth);
-VALUE w_array_compact(const VALUE self, const VALUE nth);
+VALUE w_array_compact(const VALUE self);
 VALUE w_array_dig(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_each(const VALUE self);
 VALUE w_array_each_index(const VALUE self);
