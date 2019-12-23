@@ -276,6 +276,18 @@ VALUE w_hash_inspect(const VALUE self) {
 }
 
 /*
+ * @return [::Hash]
+ */
+VALUE w_hash_invert(const VALUE self) {
+    UsaminValue *value = get_value(self);
+    check_object(value);
+    VALUE ret = rb_hash_new();
+    for (auto &m : value->value->GetObject())
+        rb_hash_aset(ret, eval(m.value, value->root_document), eval_str(m.name));
+    return ret;
+}
+
+/*
  * @return [::Array<String>]
  */
 VALUE w_hash_keys(const VALUE self) {

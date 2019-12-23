@@ -75,6 +75,7 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminHash, "index", RUBY_METHOD_FUNC(w_hash_key), 1);
     rb_define_method(rb_cUsaminHash, "inspect", RUBY_METHOD_FUNC(w_hash_inspect), 0);
     rb_define_method(rb_cUsaminHash, "to_s", RUBY_METHOD_FUNC(w_hash_inspect), 0);
+    rb_define_method(rb_cUsaminHash, "invert", RUBY_METHOD_FUNC(w_hash_invert), 0);
     rb_define_method(rb_cUsaminHash, "keys", RUBY_METHOD_FUNC(w_hash_keys), 0);
     rb_define_method(rb_cUsaminHash, "length", RUBY_METHOD_FUNC(w_hash_length), 0);
     rb_define_method(rb_cUsaminHash, "size", RUBY_METHOD_FUNC(w_hash_length), 0);

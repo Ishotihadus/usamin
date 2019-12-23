@@ -18,6 +18,7 @@ VALUE w_hash_haskey(const VALUE self, const VALUE key);
 VALUE w_hash_hasvalue(const VALUE self, const VALUE val);
 VALUE w_hash_key(const VALUE self, const VALUE val);
 VALUE w_hash_inspect(const VALUE self);
+VALUE w_hash_invert(const VALUE self);
 VALUE w_hash_keys(const VALUE self);
 VALUE w_hash_length(const VALUE self);
 VALUE w_hash_rassoc(const VALUE self, const VALUE val);
