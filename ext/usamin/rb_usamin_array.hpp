@@ -24,7 +24,6 @@ VALUE w_array_length(const VALUE self);
 VALUE w_array_reverse(const VALUE self);
 VALUE w_array_rindex(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_rotate(const int argc, const VALUE *argv, const VALUE self);
-VALUE w_array_slice(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_array_eval(const VALUE self);
 
 #endif

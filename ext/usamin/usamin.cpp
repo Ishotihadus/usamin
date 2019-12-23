@@ -98,6 +98,7 @@ void Init_usamin() {
     rb_define_alloc_func(rb_cUsaminArray, usamin_alloc);
     rb_undef_method(rb_cUsaminArray, "initialize");
     rb_define_method(rb_cUsaminArray, "[]", RUBY_METHOD_FUNC(w_array_operator_indexer), -1);
+    rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_operator_indexer), -1);
     rb_define_method(rb_cUsaminArray, "at", RUBY_METHOD_FUNC(w_array_at), 1);
     rb_define_method(rb_cUsaminArray, "compact", RUBY_METHOD_FUNC(w_array_compact), 0);
     rb_define_method(rb_cUsaminArray, "dig", RUBY_METHOD_FUNC(w_array_dig), -1);
@@ -108,18 +109,17 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminArray, "fetch", RUBY_METHOD_FUNC(w_array_fetch), -1);
     rb_define_method(rb_cUsaminArray, "find_index", RUBY_METHOD_FUNC(w_array_find_index), -1);
     rb_define_method(rb_cUsaminArray, "index", RUBY_METHOD_FUNC(w_array_find_index), -1);
-    rb_define_method(rb_cUsaminArray, "flatten", RUBY_METHOD_FUNC(w_array_flatten), -1);
     rb_define_method(rb_cUsaminArray, "first", RUBY_METHOD_FUNC(w_array_first), -1);
+    rb_define_method(rb_cUsaminArray, "flatten", RUBY_METHOD_FUNC(w_array_flatten), -1);
     rb_define_method(rb_cUsaminArray, "include?", RUBY_METHOD_FUNC(w_array_include), 1);
     rb_define_method(rb_cUsaminArray, "inspect", RUBY_METHOD_FUNC(w_array_inspect), 0);
     rb_define_method(rb_cUsaminArray, "to_s", RUBY_METHOD_FUNC(w_array_inspect), 0);
     rb_define_method(rb_cUsaminArray, "last", RUBY_METHOD_FUNC(w_array_last), -1);
     rb_define_method(rb_cUsaminArray, "length", RUBY_METHOD_FUNC(w_array_length), 0);
+    rb_define_method(rb_cUsaminArray, "size", RUBY_METHOD_FUNC(w_array_length), 0);
     rb_define_method(rb_cUsaminArray, "reverse", RUBY_METHOD_FUNC(w_array_reverse), 0);
     rb_define_method(rb_cUsaminArray, "rindex", RUBY_METHOD_FUNC(w_array_rindex), -1);
     rb_define_method(rb_cUsaminArray, "rotate", RUBY_METHOD_FUNC(w_array_rotate), -1);
-    rb_define_method(rb_cUsaminArray, "size", RUBY_METHOD_FUNC(w_array_length), 0);
-    rb_define_method(rb_cUsaminArray, "slice", RUBY_METHOD_FUNC(w_array_slice), -1);
     rb_define_method(rb_cUsaminArray, "to_ary", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "marshal_dump", RUBY_METHOD_FUNC(w_value_marshal_dump), 0);
     rb_define_method(rb_cUsaminArray, "marshal_load", RUBY_METHOD_FUNC(w_value_marshal_load), 1);
