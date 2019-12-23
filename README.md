@@ -88,6 +88,9 @@ Objects also can be handled like Hash objects.
 data.first['name']
 #=> "miku maekawa"
 
+data.first[:name]
+#=> "miku maekawa"
+
 data.first.keys
 #=> ["name", "age", "height", "weight", "body_size", "birthday", "cv"]
 ```
@@ -103,6 +106,21 @@ data.first.eval_r
 
 # same as Usamin.parse(json)
 Usamin.load(json).eval_r
+```
+
+Usamin supports pattern matching, which is introduced in Ruby 2.7.0.
+
+Note that all keys are treated as symbols in pattern matching.
+
+```ruby
+data = Usamin.load('{"maekawa": "miku", "osaki": ["tenka", "amana"], "hisakawa": { "hayate": "haa", "nagi": "naa" }}')
+#=> {"maekawa"=>"miku", "osaki"=>[...], "hisakawa"=>{...}}
+
+case data
+in maekawa:, hisakawa: {**sisters}
+    sisters
+end
+#=> {:hayate=>"haa", :nagi=>"naa"}
 ```
 
 #### Notes about lazy loading data
