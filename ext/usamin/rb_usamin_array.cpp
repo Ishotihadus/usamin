@@ -158,16 +158,19 @@ VALUE w_array_fetch(const int argc, const VALUE *argv, const VALUE self) {
     check_array(value);
     rapidjson::SizeType sz = value->value->Size();
 
+    if (argc == 2 && rb_block_given_p())
+        rb_warn("block supersedes default value argument");
+
     long l = FIX2LONG(argv[0]);
     if (l < 0)
         l += sz;
     if (0 <= l && l < sz)
         return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
 
-    if (argc == 2)
-        return argv[1];
-    else if (rb_block_given_p())
+    if (rb_block_given_p())
         return rb_yield(argv[0]);
+    else if (argc == 2)
+        return argv[1];
     else
         rb_raise(rb_eIndexError, "index %ld outside of array bounds: %ld...%u", FIX2LONG(argv[0]),
                  -static_cast<long>(sz), sz);
