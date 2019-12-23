@@ -217,7 +217,7 @@ void flatten_array(RubynizedValue &value, VALUE array, int level, VALUE root_doc
     else
         for (auto &v : value.GetArray())
             if (v.IsArray())
-                flatten_array(v, array, level > 0 ? level - 1 : level, root_document);
+                flatten_array(v, array, level - 1, root_document);
             else
                 rb_ary_push(array, eval(v, root_document));
 }
@@ -230,14 +230,9 @@ VALUE w_array_flatten(const int argc, const VALUE *argv, const VALUE self) {
     rb_check_arity(argc, 0, 1);
     UsaminValue *value = get_value(self);
     check_array(value);
-
     int level = -1;
-    if (argc == 1 && !NIL_P(argv[0])) {
+    if (argc == 1 && !NIL_P(argv[0]))
         level = NUM2INT(argv[0]);
-        if (level <= 0)
-            return eval_array(*value->value, value->root_document);
-    }
-
     VALUE ret = rb_ary_new2(value->value->Size());
     flatten_array(*value->value, ret, level, value->root_document);
     return ret;
