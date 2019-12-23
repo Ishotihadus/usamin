@@ -6,6 +6,7 @@
 VALUE w_hash_operator_indexer(const VALUE self, const VALUE key);
 VALUE w_hash_assoc(const VALUE self, const VALUE key);
 VALUE w_hash_compact(const VALUE self);
+VALUE w_hash_deconstruct_keys(const VALUE self, const VALUE keys);
 VALUE w_hash_dig(const int argc, const VALUE *argv, const VALUE self);
 VALUE w_hash_each(const VALUE self);
 VALUE w_hash_each_key(const VALUE self);

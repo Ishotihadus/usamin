@@ -46,6 +46,28 @@ VALUE w_hash_compact(const VALUE self) {
 }
 
 /*
+ * @return [::Hash]
+ */
+VALUE w_hash_deconstruct_keys(const VALUE self, const VALUE keys) {
+    UsaminValue *value = get_value(self);
+    check_object(value);
+    if (NIL_P(keys))
+        return eval_object(*(value->value), value->root_document, 1);
+    VALUE hash_keys = rb_hash_new();
+    VALUE *key_iter = RARRAY_PTR(keys);
+    const VALUE *key_iter_end = key_iter + RARRAY_LEN(keys);
+    for (VALUE *k = key_iter; k < key_iter_end; k++)
+        rb_hash_aset(hash_keys, *k, Qtrue);
+    VALUE hash = rb_hash_new();
+    for (auto &m : value->value->GetObject()) {
+        VALUE name = rb_to_symbol(new_utf8_str(m.name.GetString(), m.name.GetStringLength()));
+        if (!NIL_P(rb_hash_lookup(hash_keys, name)))
+            rb_hash_aset(hash, name, eval(m.value, value->root_document));
+    }
+    return hash;
+}
+
+/*
  * @return [Object | nil]
  */
 VALUE w_hash_dig(const int argc, const VALUE *argv, const VALUE self) {

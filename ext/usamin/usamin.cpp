@@ -56,6 +56,7 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminHash, "[]", RUBY_METHOD_FUNC(w_hash_operator_indexer), 1);
     rb_define_method(rb_cUsaminHash, "assoc", RUBY_METHOD_FUNC(w_hash_assoc), 1);
     rb_define_method(rb_cUsaminHash, "compact", RUBY_METHOD_FUNC(w_hash_compact), 0);
+    rb_define_method(rb_cUsaminHash, "deconstruct_keys", RUBY_METHOD_FUNC(w_hash_deconstruct_keys), 1);
     rb_define_method(rb_cUsaminHash, "dig", RUBY_METHOD_FUNC(w_hash_dig), -1);
     rb_define_method(rb_cUsaminHash, "each", RUBY_METHOD_FUNC(w_hash_each), 0);
     rb_define_method(rb_cUsaminHash, "each_pair", RUBY_METHOD_FUNC(w_hash_each), 0);
@@ -100,6 +101,7 @@ void Init_usamin() {
     rb_define_method(rb_cUsaminArray, "at", RUBY_METHOD_FUNC(w_array_at), 1);
     rb_define_method(rb_cUsaminArray, "compact", RUBY_METHOD_FUNC(w_array_compact), 0);
     rb_define_method(rb_cUsaminArray, "dig", RUBY_METHOD_FUNC(w_array_dig), -1);
+    rb_define_method(rb_cUsaminArray, "deconstruct", RUBY_METHOD_FUNC(w_array_eval), 0);
     rb_define_method(rb_cUsaminArray, "each", RUBY_METHOD_FUNC(w_array_each), 0);
     rb_define_method(rb_cUsaminArray, "each_index", RUBY_METHOD_FUNC(w_array_each_index), 0);
     rb_define_method(rb_cUsaminArray, "empty?", RUBY_METHOD_FUNC(w_array_isempty), 0);
