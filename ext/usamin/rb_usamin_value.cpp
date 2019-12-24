@@ -215,8 +215,8 @@ static st_index_t hash_array(RubynizedValue &value);
 
 static st_index_t hash_value(RubynizedValue &value) {
     auto type = value.GetType();
-    st_index_t h = rb_hash_start((st_index_t)type);
-    rb_hash_uint(h, (st_index_t)hash_value);
+    st_index_t h = rb_hash_start(type);
+    rb_hash_uint(h, reinterpret_cast<st_index_t>(hash_value));
     switch (type) {
     case rapidjson::kNullType:
         h = rb_hash_uint(h, NUM2LONG(rb_hash(Qnil)));
@@ -254,7 +254,7 @@ static st_index_t hash_value(RubynizedValue &value) {
 
 static st_index_t hash_object(RubynizedValue &value) {
     st_index_t h = rb_hash_start(value.MemberCount());
-    h = rb_hash_uint(h, (st_index_t)hash_object);
+    h = rb_hash_uint(h, reinterpret_cast<st_index_t>(hash_object));
     for (auto &m : value.GetObject()) {
         h = rb_hash_uint(h, rb_str_hash(eval_str(m.name)));
         h = rb_hash_uint(h, hash_value(m.value));
@@ -264,7 +264,7 @@ static st_index_t hash_object(RubynizedValue &value) {
 
 static st_index_t hash_array(RubynizedValue &value) {
     st_index_t h = rb_hash_start(value.Size());
-    h = rb_hash_uint(h, (st_index_t)hash_array);
+    h = rb_hash_uint(h, reinterpret_cast<st_index_t>(hash_array));
     for (auto &v : value.GetArray())
         h = rb_hash_uint(h, hash_value(v));
     return rb_hash_end(h);

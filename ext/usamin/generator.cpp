@@ -1,6 +1,7 @@
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/writer.h>
 #include <ruby.h>
+#include <ruby/version.h>
 #include "rb_common.hpp"
 #include "rb_usamin_value.hpp"
 #include "rubynized_rapidjson.hpp"
@@ -17,7 +18,7 @@ static inline void write_usamin(Writer &, const VALUE);
 template <class Writer>
 static inline void write_str(Writer &writer, const VALUE value) {
     VALUE v = get_utf8_str(value);
-    writer.String(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
+    writer.String(RSTRING_PTR(v), RSTRING_LENINT(v));
 }
 
 template <class Writer>
@@ -62,7 +63,7 @@ static void write(Writer &writer, const VALUE value) {
         break;
     case RUBY_T_BIGNUM: {
         VALUE v = rb_big2str(value, 10);
-        writer.RawValue(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)), rapidjson::kNumberType);
+        writer.RawValue(RSTRING_PTR(v), RSTRING_LEN(v), rapidjson::kNumberType);
     } break;
     default:
         if (rb_obj_is_kind_of(value, rb_cUsaminValue))
@@ -76,7 +77,7 @@ static void write(Writer &writer, const VALUE value) {
 template <class Writer>
 static inline void write_key_str(Writer &writer, const VALUE value) {
     VALUE v = get_utf8_str(value);
-    writer.Key(RSTRING_PTR(v), static_cast<unsigned int>(RSTRING_LEN(v)));
+    writer.Key(RSTRING_PTR(v), RSTRING_LENINT(v));
 }
 
 template <class Writer>
@@ -86,7 +87,8 @@ static inline void write_key_to_s(Writer &writer, const VALUE value) {
 }
 
 template <class Writer>
-static inline int write_hash_each(const VALUE key, const VALUE value, Writer *writer) {
+static inline int write_hash_each(const VALUE key, const VALUE value, VALUE writer_v) {
+    Writer *writer = reinterpret_cast<Writer *>(writer_v);
     if (RB_TYPE_P(key, T_STRING))
         write_key_str(*writer, key);
     else if (RB_TYPE_P(key, T_SYMBOL))
@@ -100,7 +102,11 @@ static inline int write_hash_each(const VALUE key, const VALUE value, Writer *wr
 template <class Writer>
 static inline void write_hash(Writer &writer, const VALUE hash) {
     writer.StartObject();
-    rb_hash_foreach(hash, (int (*)(ANYARGS))write_hash_each<Writer>, reinterpret_cast<VALUE>((&writer)));
+#if RUBY_API_VERSION_CODE < 20700
+    rb_hash_foreach(hash, (int (*)(ANYARGS))write_hash_each<Writer>, reinterpret_cast<VALUE>(&writer));
+#else
+    rb_hash_foreach(hash, write_hash_each<Writer>, reinterpret_cast<VALUE>(&writer));
+#endif
     writer.EndObject();
 }
 
@@ -176,10 +182,10 @@ VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE) {
         VALUE v_indent = rb_hash_lookup(options, sym_indent);
         if (RTEST(v_indent)) {
             if (RB_FIXNUM_P(v_indent)) {
-                long l = FIX2LONG(v_indent);
-                indent_count = l > 0 ? static_cast<unsigned int>(l) : 0;
+                int l = FIX2INT(v_indent);
+                indent_count = l > 0 ? l : 0;
             } else {
-                long vlen = RSTRING_LEN(v_indent);
+                int vlen = RSTRING_LENINT(v_indent);
                 if (vlen == 0) {
                     indent_count = 0;
                 } else {
@@ -199,7 +205,7 @@ VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE) {
                         if (indent_str[0] != indent_str[i])
                             rb_raise(rb_eUsaminError,
                                      ":indent must be a repetation of \" \", \"\\t\", \"\\r\" or \"\\n\".");
-                    indent_count = static_cast<unsigned int>(vlen);
+                    indent_count = vlen;
                 }
             }
         }

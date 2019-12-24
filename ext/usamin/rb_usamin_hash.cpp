@@ -1,5 +1,6 @@
 #include <rapidjson/document.h>
 #include <ruby.h>
+#include <ruby/version.h>
 #include "rb_usamin_array.hpp"
 #include "usamin_value.hpp"
 #include "parser_helper.hpp"
@@ -433,7 +434,7 @@ VALUE w_hash_merge(const int argc, const VALUE *argv, const VALUE self) {
     static ID s = rb_intern("merge");
     VALUE args, block;
     rb_scan_args(argc, argv, "*&", &args, &block);
-    return rb_funcall_with_block(w_hash_eval(self), s, (int)RARRAY_LEN(args), RARRAY_CONST_PTR(args), block);
+    return rb_funcall_with_block(w_hash_eval(self), s, RARRAY_LENINT(args), RARRAY_CONST_PTR(args), block);
 }
 
 /*
@@ -457,7 +458,11 @@ static VALUE hash_proc_call(RB_BLOCK_CALL_FUNC_ARGLIST(key, self)) {
  * @return [Proc]
  */
 VALUE w_hash_to_proc(const VALUE self) {
+#if RUBY_API_VERSION_CODE < 20700
     return rb_proc_new(RUBY_METHOD_FUNC(hash_proc_call), self);
+#else
+    return rb_proc_new(hash_proc_call, self);
+#endif
 }
 
 /*

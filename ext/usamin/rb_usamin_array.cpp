@@ -23,35 +23,37 @@ VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const VALUE se
     check_array(value);
     rapidjson::SizeType sz = value->value->Size();
     if (argc == 2) {
-        long beg = FIX2LONG(argv[0]);
-        long len = FIX2LONG(argv[1]);
-        if (beg > sz || len < 0)
+        int beg = FIX2INT(argv[0]);
+        int len = FIX2INT(argv[1]);
+        if (len < 0)
             return Qnil;
         if (beg < 0)
             beg += sz;
-        if (beg < 0)
+        if (beg < 0 || static_cast<rapidjson::SizeType>(beg) > sz)
             return Qnil;
-        rapidjson::SizeType end = static_cast<rapidjson::SizeType>(beg + len);
+        rapidjson::SizeType end = beg + len;
         if (end > sz)
             end = sz;
         VALUE ret = rb_ary_new2(end - beg);
-        for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < end; i++)
+        for (rapidjson::SizeType i = beg; i < end; i++)
             rb_ary_push(ret, eval((*value->value)[i], value->root_document));
         return ret;
     } else if (rb_obj_is_kind_of(argv[0], rb_cRange)) {
         long beg, len;
         if (rb_range_beg_len(argv[0], &beg, &len, sz, 0) == Qtrue) {
             VALUE ret = rb_ary_new2(len);
-            for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(beg); i < beg + len; i++)
+            unsigned int beg_i = rb_long2int(beg);
+            unsigned int len_i = rb_long2int(len);
+            for (rapidjson::SizeType i = beg_i; i < beg_i + len_i; i++)
                 rb_ary_push(ret, eval((*value->value)[i], value->root_document));
             return ret;
         }
     } else {
-        long l = FIX2LONG(argv[0]);
+        int l = FIX2INT(argv[0]);
         if (l < 0)
             l += sz;
-        if (0 <= l && l < sz)
-            return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
+        if (0 <= l && static_cast<rapidjson::SizeType>(l) < sz)
+            return eval((*value->value)[l], value->root_document);
     }
     return Qnil;
 }
@@ -63,12 +65,12 @@ VALUE w_array_operator_indexer(const int argc, const VALUE *argv, const VALUE se
 VALUE w_array_at(const VALUE self, const VALUE nth) {
     UsaminValue *value = get_value(self);
     check_array(value);
-    long l = FIX2LONG(nth);
+    int l = FIX2INT(nth);
     rapidjson::SizeType sz = value->value->Size();
     if (l < 0)
         l += sz;
-    if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
+    if (0 <= l && static_cast<rapidjson::SizeType>(l) < sz)
+        return eval((*value->value)[l], value->root_document);
     return Qnil;
 }
 
@@ -161,11 +163,11 @@ VALUE w_array_fetch(const int argc, const VALUE *argv, const VALUE self) {
     if (argc == 2 && rb_block_given_p())
         rb_warn("block supersedes default value argument");
 
-    long l = FIX2LONG(argv[0]);
+    int l = FIX2INT(argv[0]);
     if (l < 0)
         l += sz;
-    if (0 <= l && l < sz)
-        return eval((*value->value)[static_cast<rapidjson::SizeType>(l)], value->root_document);
+    if (0 <= l && static_cast<rapidjson::SizeType>(l) < sz)
+        return eval((*value->value)[l], value->root_document);
 
     if (rb_block_given_p())
         return rb_yield(argv[0]);
