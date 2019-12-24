@@ -14,7 +14,7 @@ rb_encoding *utf8;
 int utf8index;
 ID id_dig, id_to_s;
 VALUE rb_mUsamin, rb_cUsaminValue, rb_cUsaminHash, rb_cUsaminArray, rb_eUsaminError, rb_eParserError;
-VALUE utf8value, sym_fast, sym_indent, sym_single_line_array, sym_symbolize_names;
+VALUE utf8value, sym_fast, sym_indent, sym_recursive, sym_single_line_array, sym_symbolize_names;
 
 extern "C" {
 void Init_usamin() {
@@ -23,6 +23,7 @@ void Init_usamin() {
     utf8value = rb_enc_from_encoding(utf8);
     sym_fast = rb_id2sym(rb_intern("fast"));
     sym_indent = rb_id2sym(rb_intern("indent"));
+    sym_recursive = rb_id2sym(rb_intern("recursive"));
     sym_single_line_array = rb_id2sym(rb_intern("single_line_array"));
     sym_symbolize_names = rb_id2sym(rb_intern("symbolize_names"));
     id_dig = rb_intern("dig");

@@ -8,10 +8,20 @@
 #include "usamin_value.hpp"
 #include "parser_helper.hpp"
 
-static inline rapidjson::ParseResult parse(RubynizedDocument &doc, const VALUE str, bool fast = false) {
+static inline rapidjson::ParseResult parse(RubynizedDocument &doc, const VALUE str, bool fast = false,
+                                           bool recursive = false) {
     volatile VALUE v = get_utf8_str(str);
-    return fast ? doc.Parse<RAPIDJSON_PARSE_FAST_FLAGS>(RSTRING_PTR(v), RSTRING_LEN(v))
-                : doc.Parse(RSTRING_PTR(v), RSTRING_LEN(v));
+#define PARSE_WITH_FLAGS(flags) return doc.Parse<flags>(RSTRING_PTR(v), RSTRING_LEN(v))
+    if (recursive)
+        if (fast)
+            PARSE_WITH_FLAGS(RAPIDJSON_PARSE_FAST_FLAGS & ~rapidjson::kParseIterativeFlag);
+        else
+            PARSE_WITH_FLAGS(RAPIDJSON_PARSE_DEFAULT_FLAGS & ~rapidjson::kParseIterativeFlag);
+    else if (fast)
+        PARSE_WITH_FLAGS(RAPIDJSON_PARSE_FAST_FLAGS);
+    else
+        PARSE_WITH_FLAGS(RAPIDJSON_PARSE_DEFAULT_FLAGS);
+#undef PARSE_WITH_FLAGS
 }
 
 /*
@@ -22,15 +32,16 @@ static inline rapidjson::ParseResult parse(RubynizedDocument &doc, const VALUE s
  *   @param [String] source JSON string to parse
  *   @param [::Hash] opts options
  *   @option opts :fast fast mode (but not precise)
+ *   @option opts :recursive non-iterative (recursive) mode (fast but not safe, can cause SystemStackError and illegal hardware instruction)
  *   @return [Object]
  */
 VALUE w_load(const int argc, const VALUE *argv, const VALUE) {
-    extern VALUE rb_eUsaminError, rb_eParserError, sym_fast;
+    extern VALUE rb_eUsaminError, rb_eParserError, sym_fast, sym_recursive;
 
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
     RubynizedDocument *doc = new RubynizedDocument;
-    auto result = parse(*doc, source, test_option(options, sym_fast));
+    auto result = parse(*doc, source, test_option(options, sym_fast), test_option(options, sym_recursive));
     if (!result) {
         delete doc;
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());
@@ -72,16 +83,17 @@ VALUE w_load(const int argc, const VALUE *argv, const VALUE) {
  *   @param [String] source a JSON string to parse
  *   @param [::Hash] opts options
  *   @option opts :fast fast mode (but not precise)
+ *   @option opts :recursive non-iterative (recursive) mode (fast but not safe, can cause SystemStackError and illegal hardware instruction)
  *   @option opts :symbolize_names symbolize keys of all Hash objects
  *   @return [Object]
  */
 VALUE w_parse(const int argc, const VALUE *argv, const VALUE) {
-    extern VALUE rb_eParserError, sym_fast, sym_symbolize_names;
+    extern VALUE rb_eParserError, sym_fast, sym_recursive, sym_symbolize_names;
 
     VALUE source, options;
     rb_scan_args(argc, argv, "1:", &source, &options);
     RubynizedDocument doc;
-    auto result = parse(doc, source, test_option(options, sym_fast));
+    auto result = parse(doc, source, test_option(options, sym_fast), test_option(options, sym_recursive));
     if (!result)
         rb_raise(rb_eParserError, "%s Offset: %lu", GetParseError_En(result.Code()), result.Offset());
     return eval_r(doc, test_option(options, sym_symbolize_names));
