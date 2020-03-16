@@ -4,6 +4,7 @@ require 'mkmf'
 
 RbConfig::MAKEFILE_CONFIG['CXX'] = ENV['CXX'] if ENV['CXX']
 have_library('stdc++')
+have_library('m')
 dir_config('rapidjson')
 append_cppflags('-O3')
 append_cppflags('-Wall')
@@ -20,4 +21,7 @@ if checking_for('whether -march=native is accepted as CPPFLAGS'){try_cppflags('-
 end
 
 $CPPFLAGS << ' -std=c++11'
+
+$CPPFLAGS << ' -DRAPIDJSON_IS_HEAD' if arg_config('--rapidjson-is-head')
+
 create_makefile('usamin/usamin')

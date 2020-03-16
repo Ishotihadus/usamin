@@ -1,3 +1,4 @@
+#include "rb270_fix.hpp"
 #include "default_parse_flags.hpp"
 #include "parser.hpp"
 #include <rapidjson/reader.h>

@@ -1,3 +1,4 @@
+#include "rb270_fix.hpp"
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/writer.h>
 #include <ruby.h>
@@ -5,6 +6,8 @@
 #include "rb_common.hpp"
 #include "rb_usamin_value.hpp"
 #include "rubynized_rapidjson.hpp"
+
+#define WRITER_CONFIGS rapidjson::UTF8<>, rapidjson::UTF8<>, RubyCrtAllocator, rapidjson::kWriteNanAndInfFlag
 
 template <class Writer>
 static inline void write_hash(Writer &, const VALUE);
@@ -152,7 +155,7 @@ static inline void write_usamin(Writer &writer, const VALUE self) {
  */
 VALUE w_generate(const VALUE, const VALUE value) {
     rapidjson::StringBuffer buf;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
+    rapidjson::Writer<rapidjson::StringBuffer, WRITER_CONFIGS> writer(buf);
     write(writer, value);
     return new_utf8_str(buf.GetString(), buf.GetSize());
 }
@@ -174,7 +177,11 @@ VALUE w_pretty_generate(const int argc, const VALUE *argv, const VALUE) {
     VALUE value, options;
     rb_scan_args(argc, argv, "1:", &value, &options);
     rapidjson::StringBuffer buf;
+#if RAPIDJSON_VERSION_CODE(RAPIDJSON_MAJOR_VERSION, RAPIDJSON_MINOR_VERSION, RAPIDJSON_PATCH_VERSION) > RAPIDJSON_VERSION_CODE(1, 1, 0) || defined(RAPIDJSON_IS_HEAD)
+    rapidjson::PrettyWriter<rapidjson::StringBuffer, WRITER_CONFIGS> writer(buf);
+#else
     rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buf);
+#endif
 
     char indent_char = ' ';
     unsigned int indent_count = 2;
