@@ -1,8 +1,8 @@
 #include "rb270_fix.hpp"
 #include "default_parse_flags.hpp"
-#include "parser.hpp"
 #include <rapidjson/reader.h>
 #include <rapidjson/error/en.h>
+#include "parser.hpp"
 #include <ruby.h>
 #include "rb_common.hpp"
 #include "rubynized_rapidjson.hpp"

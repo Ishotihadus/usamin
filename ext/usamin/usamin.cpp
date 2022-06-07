@@ -1,10 +1,10 @@
-#include <ruby.h>
-#include <ruby/encoding.h>
 #include "generator.hpp"
 #include "parser.hpp"
 #include "rb_usamin_value.hpp"
 #include "rb_usamin_hash.hpp"
 #include "rb_usamin_array.hpp"
+#include <ruby.h>
+#include <ruby/encoding.h>
 
 #if SIZEOF_VALUE < SIZEOF_VOIDP
 #error SIZEOF_VOIDP must not be greater than SIZEOF_VALUE.

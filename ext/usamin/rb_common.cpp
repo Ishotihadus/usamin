@@ -1,6 +1,6 @@
+#include "rubynized_rapidjson.hpp"
 #include <ruby.h>
 #include <ruby/encoding.h>
-#include "rubynized_rapidjson.hpp"
 #include "usamin_value.hpp"
 
 VALUE get_utf8_str(VALUE str) {

@@ -1,8 +1,8 @@
 #ifndef USAMIN_USAMIN_VALUE_HPP
 #define USAMIN_USAMIN_VALUE_HPP
 
-#include <ruby.h>
 #include "rubynized_rapidjson.hpp"
+#include <ruby.h>
 
 class UsaminValue {
 public:

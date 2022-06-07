@@ -1,4 +1,3 @@
-#include "rb270_fix.hpp"
 #include <rapidjson/document.h>
 #include <ruby.h>
 #include "usamin_value.hpp"

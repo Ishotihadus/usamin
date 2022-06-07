@@ -1,6 +1,7 @@
 #ifndef USAMIN_RUBYNIZED_RAPIDJSON_HPP
 #define USAMIN_RUBYNIZED_RAPIDJSON_HPP
 
+#include "rb270_fix.hpp"
 #include <rapidjson/document.h>
 
 class RubyCrtAllocator {
